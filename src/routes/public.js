@@ -8,7 +8,7 @@ import * as M from '../models.js';
 import { authLayout, csrfField, field, publicLayout, select } from '../views/layout.js';
 import { landingPage, legalPage } from '../views/landing.js';
 
-export const DEMO_WIDGET_ID = 'wdg_sportellodemo';
+export const DEMO_WIDGET_ID = 'wdg_apertodemo';
 const loginLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10 });
 const signupLimiter = createRateLimiter({ windowMs: 60 * 60_000, max: 10 });
 

@@ -47,9 +47,57 @@
     sel.addEventListener('change', function () { form.requestSubmit ? form.requestSubmit() : form.submit(); });
   });
 
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- Notifiche: chiudibili, quelle positive spariscono da sole ----------
+  document.querySelectorAll('.main > .flash').forEach(function (toast) {
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'flash-close';
+    close.setAttribute('aria-label', 'Chiudi la notifica');
+    close.textContent = '×';
+    toast.appendChild(close);
+    var dismiss = function () {
+      if (toast.classList.contains('is-leaving')) return;
+      toast.classList.add('is-leaving');
+      setTimeout(function () { toast.remove(); }, reduceMotion ? 0 : 300);
+    };
+    close.addEventListener('click', dismiss);
+    if (toast.classList.contains('flash-ok')) {
+      var timer = document.createElement('span');
+      timer.className = 'flash-timer';
+      timer.setAttribute('aria-hidden', 'true');
+      toast.appendChild(timer);
+      var t = setTimeout(dismiss, 5000);
+      // Se il mouse è sopra, la notifica aspetta: si legge con calma.
+      toast.addEventListener('mouseenter', function () { clearTimeout(t); timer.style.animationPlayState = 'paused'; });
+      toast.addEventListener('mouseleave', function () { t = setTimeout(dismiss, 1500); });
+    }
+  });
+
+  // ---------- Numeri delle statistiche che contano fino al valore ----------
+  if (!reduceMotion) {
+    document.querySelectorAll('.stat-value').forEach(function (el) {
+      var text = el.textContent.trim();
+      var m = /^([^\d]*)([\d.]+)([^\d]*)$/.exec(text);
+      if (!m) return; // es. "—" o testi composti: restano come sono
+      var target = Number(m[2].replace(/\./g, ''));
+      if (!target || target > 1e7) return;
+      var start = null;
+      var format = function (n) { return m[1] + n.toLocaleString('it-IT') + m[3]; };
+      el.textContent = format(0);
+      requestAnimationFrame(function frame(t) {
+        if (start === null) start = t;
+        var p = Math.min(1, (t - start) / 900);
+        el.textContent = format(Math.round(target * (1 - Math.pow(1 - p, 3))));
+        if (p < 1) requestAnimationFrame(frame);
+      });
+    });
+  }
+
   // ---------- Anteprima dal vivo dell'assistente ----------
   function widgetInstance(id) {
-    return window.__sportello && typeof window.__sportello[id] === 'object' ? window.__sportello[id] : null;
+    return window.__aperto && typeof window.__aperto[id] === 'object' ? window.__aperto[id] : null;
   }
 
   document.addEventListener('click', function (e) {
@@ -60,7 +108,7 @@
   });
 
   // Sugli schermi larghi l'anteprima si apre da sola: lo spazio a destra è riservato.
-  document.addEventListener('sportello:ready', function (e) {
+  document.addEventListener('aperto:ready', function (e) {
     if (document.body.classList.contains('has-preview') && window.innerWidth >= 1240) {
       var w = widgetInstance(e.detail.id);
       if (w) w.open();
@@ -71,7 +119,17 @@
   if (!form) return;
   var id = form.getAttribute('data-live-preview');
   var saveState = form.querySelector('[data-save-state]');
+  var saveBar = form.querySelector('.save-bar');
   var dirty = false;
+
+  // Il campione di colore corrispondente al colore scelto resta evidenziato.
+  function markSwatch() {
+    var value = (form.querySelector('input[name="color"]') || {}).value || '';
+    form.querySelectorAll('[data-swatch]').forEach(function (sw) {
+      sw.classList.toggle('is-selected', sw.getAttribute('data-swatch').toLowerCase() === value.toLowerCase());
+    });
+  }
+  markSwatch();
 
   function readSetting(input) {
     var key = input.getAttribute('data-setting');
@@ -94,9 +152,11 @@
 
   form.addEventListener('input', function (e) {
     if (e.target.matches('[data-setting]')) push(e.target);
+    if (e.target.name === 'color') markSwatch();
     if (!dirty) {
       dirty = true;
       if (saveState) saveState.textContent = 'Ci sono modifiche non salvate.';
+      if (saveBar) saveBar.classList.add('is-dirty');
     }
   });
   form.addEventListener('change', function (e) {

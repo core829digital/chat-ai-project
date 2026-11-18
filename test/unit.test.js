@@ -99,7 +99,7 @@ test('CSV contatti: BOM, separatore italiano e protezione da formule', () => {
 
 test('zip del plugin WordPress valido e leggibile', () => {
   const content = Buffer.from('<?php echo "ciao";');
-  const zip = createZip([{ name: 'sportello-chat/sportello-chat.php', data: content }]);
+  const zip = createZip([{ name: 'aperto-chat/aperto-chat.php', data: content }]);
   assert.equal(zip.readUInt32LE(0), 0x04034b50);
   const nameLen = zip.readUInt16LE(26);
   const size = zip.readUInt32LE(18);

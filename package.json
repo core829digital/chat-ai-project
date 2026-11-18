@@ -1,8 +1,8 @@
 {
-  "name": "sportello",
+  "name": "aperto",
   "version": "0.1.0",
   "private": true,
-  "description": "Sportello — assistente per siti web installabile con una riga di codice. MVP senza AI collegata.",
+  "description": "Aperto — assistente per siti web installabile con una riga di codice. MVP senza AI collegata.",
   "type": "module",
   "engines": {
     "node": ">=24"

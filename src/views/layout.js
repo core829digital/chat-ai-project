@@ -124,7 +124,8 @@ export function authLayout(ctx, { title, body }) {
 
 // ---------------- Dashboard (cliente e admin) ----------------
 function navLink(href, label, iconName, active, key) {
-  return html`<a href="${href}" class="side-link${active === key ? ' is-active' : ''}"${active === key ? raw(' aria-current="page"') : ''}>${icon(iconName)}<span>${label}</span></a>`;
+  const on = active === key;
+  return html`<a href="${href}" class="side-link${on ? ' is-active' : ''}"${on ? raw(' aria-current="page"') : ''}>${on ? raw('<span class="side-ink" aria-hidden="true"></span>') : ''}${icon(iconName)}<span>${label}</span></a>`;
 }
 
 function trialNote(account) {

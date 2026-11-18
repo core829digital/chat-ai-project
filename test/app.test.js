@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const PORT = 3990 + Math.floor(Math.random() * 9);
 const BASE = `http://localhost:${PORT}`;
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sportello-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aperto-test-'));
 process.env.DB_PATH = path.join(tmp, 'test.db');
 process.env.PORT = String(PORT);
 process.env.BASE_URL = BASE;
@@ -103,7 +103,7 @@ test('protezione CSRF sui form', async () => {
 
 test('creazione assistente con modello di settore', async () => {
   const page = await client.get('/app/widgets/new?primo=1');
-  assert.match(page.text, /Benvenuto in Sportello/);
+  assert.match(page.text, /Benvenuto in Aperto/);
   const bad = await client.post('/app/widgets', { name: 'Hotel', siteUrl: 'non un url', sector: 'hotel', withTemplate: '1' });
   assert.equal(bad.status, 422);
   const r = await client.post('/app/widgets', { name: 'Hotel Prova', siteUrl: 'https://www.hotelprova.example', sector: 'hotel', withTemplate: '1' });
@@ -350,7 +350,7 @@ test('pagina chat ospitata e plugin WordPress', async () => {
   assert.equal(page.status, 200);
   assert.match(page.text, /data-mode="page"/);
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors \*/);
-  const zip = await fetch(`${BASE}/download/sportello-wordpress.zip`);
+  const zip = await fetch(`${BASE}/download/aperto-wordpress.zip`);
   assert.equal(zip.headers.get('content-type'), 'application/zip');
   const buf = Buffer.from(await zip.arrayBuffer());
   assert.equal(buf.readUInt32LE(0), 0x04034b50);

@@ -23,7 +23,7 @@ export function widgetHeader(widget, active, { account, isAdmin } = {}) {
       <div class="widget-head-meta">${widgetStatusBadge(widget)} ${installStatus(widget)}</div>
     </div>
     <nav class="tabs" aria-label="Sezioni dell'assistente">
-      ${TABS.map(([path, label]) => html`<a href="${base}${path}" class="tab${active === path ? ' is-active' : ''}"${active === path ? raw(' aria-current="page"') : ''}>${label}</a>`)}
+      ${TABS.map(([path, label]) => html`<a href="${base}${path}" class="tab${active === path ? ' is-active' : ''}"${active === path ? raw(' aria-current="page"') : ''}>${label}${active === path ? raw('<span class="tab-ink" aria-hidden="true"></span>') : ''}</a>`)}
     </nav>
   </div>`;
 }
@@ -258,7 +258,7 @@ export function appearancePage(ctx, { widget, account }) {
 export function installPage(ctx, { widget }) {
   const snippet = snippetFor(widget);
   const hosted = hostedUrl(widget);
-  const mailBody = `Ciao,\n\nper attivare l'assistente sul sito serve incollare questa riga prima della chiusura del tag </body> in tutte le pagine:\n\n${snippet}\n\nSe il sito è WordPress si può usare il plugin: ${config.baseUrl}/download/sportello-wordpress.zip (codice assistente: ${widget.public_id}).\n\nGrazie!`;
+  const mailBody = `Ciao,\n\nper attivare l'assistente sul sito serve incollare questa riga prima della chiusura del tag </body> in tutte le pagine:\n\n${snippet}\n\nSe il sito è WordPress si può usare il plugin: ${config.baseUrl}/download/aperto-wordpress.zip (codice assistente: ${widget.public_id}).\n\nGrazie!`;
   return html`
     <div class="install-status panel panel-row">
       <div>
@@ -288,7 +288,7 @@ export function installPage(ctx, { widget }) {
           <li>Incolla il codice dell’assistente e salva.</li>
         </ol>
         ${copyField(widget.public_id, 'Copia codice assistente')}
-        <a class="btn btn-outline" href="/download/sportello-wordpress.zip" download>Scarica il plugin (.zip)</a>
+        <a class="btn btn-outline" href="/download/aperto-wordpress.zip" download>Scarica il plugin (.zip)</a>
       </section>
 
       <section class="panel stack">

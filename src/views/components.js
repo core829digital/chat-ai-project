@@ -27,7 +27,7 @@ export function dailyChart(rows, { label = 'Conversazioni negli ultimi 30 giorni
   return html`<figure class="chart">
     <figcaption class="chart-cap"><span>${label}</span><strong>${fmtNum(total)}</strong></figcaption>
     <div class="bars" aria-hidden="true">
-      ${rows.map((r) => html`<span class="bar" style="height:${Math.max(r.n ? 6 : 2, Math.round((r.n / max) * 100))}%" title="${fmt.format(new Date(r.day))}: ${r.n}"></span>`)}
+      ${rows.map((r, i) => html`<span class="bar" style="height:${Math.max(r.n ? 6 : 2, Math.round((r.n / max) * 100))}%;--i:${i}" title="${fmt.format(new Date(r.day))}: ${r.n}"></span>`)}
     </div>
     <div class="bars-axis" aria-hidden="true"><span>${rows.length ? fmt.format(new Date(rows[0].day)) : ''}</span><span>oggi</span></div>
     <table class="sr-only"><caption>${label}</caption><tbody>${rows.map((r) => html`<tr><th scope="row">${r.day}</th><td>${r.n}</td></tr>`)}</tbody></table>

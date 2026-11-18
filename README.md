@@ -1,4 +1,4 @@
-# Sportello — MVP
+# Aperto — MVP
 
 Assistente per siti web installabile con una riga di codice, con dashboard per i clienti e pannello di amministrazione.
 **In questa versione l'AI non è collegata**: l'assistente risponde con le risposte scritte dal cliente, scegliendo la più vicina alla domanda (motore in italiano in `src/lib/matcher.js`). Quando non è sicuro lo dice e raccoglie i recapiti.
@@ -25,7 +25,7 @@ Per ricominciare da zero: `npm run seed -- --reset`. Per sviluppare con riavvio 
 | Pannello admin | `/admin` | MRR e statistiche, clienti, creazione cliente + assistente con **link di invito**, accesso come cliente, piani e stati, tutti gli assistenti e contatti |
 | Widget | `/w.js` | Script da incollare nei siti: `<script src="https://DOMINIO/w.js" data-id="wdg_..." async></script>` |
 | Chat ospitata | `/c/wdg_...` | Pagina chat per siti che non si possono modificare |
-| Plugin WordPress | `/download/sportello-wordpress.zip` | Generato dai sorgenti in `wordpress-plugin/` |
+| Plugin WordPress | `/download/aperto-wordpress.zip` | Generato dai sorgenti in `wordpress-plugin/` |
 
 ### Due modi di lavorare
 - **Il cliente fa da solo**: si registra, sceglie il settore, trova le domande già scritte, personalizza e installa.

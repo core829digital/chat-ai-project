@@ -439,9 +439,9 @@ export function registerApp(router) {
   });
 
   // ---------- Plugin WordPress (generato al volo dai sorgenti nel repository) ----------
-  router.get('/download/sportello-wordpress.zip', (ctx) => {
+  router.get('/download/aperto-wordpress.zip', (ctx) => {
     const zip = buildPluginZip();
-    ctx.res.setHeader('Content-Disposition', 'attachment; filename="sportello-wordpress.zip"');
+    ctx.res.setHeader('Content-Disposition', 'attachment; filename="aperto-wordpress.zip"');
     ctx.res.setHeader('Content-Length', zip.length);
     ctx.text(zip, 200, 'application/zip');
   });

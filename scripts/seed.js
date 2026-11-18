@@ -22,26 +22,26 @@ const credFile = path.join(path.dirname(config.dbPath), 'credenziali-demo.txt');
 const lines = [];
 
 // ---------- Amministratore ----------
-const adminEmail = (process.env.ADMIN_EMAIL || 'admin@sportello.local').toLowerCase();
+const adminEmail = (process.env.ADMIN_EMAIL || 'admin@aperto.local').toLowerCase();
 if (!M.findUserByEmail(adminEmail)) {
   const password = process.env.ADMIN_PASSWORD || randomToken(12);
   M.createAdmin({ email: adminEmail, name: 'Amministratore', password });
   lines.push(`Amministratore: ${adminEmail} / ${password}  ->  ${config.baseUrl}/admin`);
 }
 
-// ---------- Assistente demo della landing (risponde su Sportello stesso) ----------
+// ---------- Assistente demo della landing (risponde su Aperto stesso) ----------
 if (!M.getWidgetByPublicId(DEMO_WIDGET_ID)) {
   const { accountId } = M.createAccountWithUser({
-    company: 'Sportello (sito ufficiale)', name: 'Team Sportello', email: 'demo@sportello.local',
+    company: 'Aperto (sito ufficiale)', name: 'Team Aperto', email: 'demo@aperto.local',
     password: null, plan: 'business', status: 'active', sector: 'generico', createdBy: 'admin',
   });
-  const w = M.createWidget({ accountId, name: 'Demo sito Sportello', sector: 'generico', withTemplate: false, fixedPublicId: DEMO_WIDGET_ID });
+  const w = M.createWidget({ accountId, name: 'Demo sito Aperto', sector: 'generico', withTemplate: false, fixedPublicId: DEMO_WIDGET_ID });
   M.updateWidget(w.id, {
     settings: {
-      title: 'Sportello',
+      title: 'Aperto',
       subtitle: 'Demo: chiedimi come funziono',
       avatarText: 'S',
-      welcomeMessage: 'Ciao! Sono un assistente Sportello. Fammi una domanda su prezzi, installazione o privacy: ti rispondo come farei sul tuo sito.',
+      welcomeMessage: 'Ciao! Sono un assistente Aperto. Fammi una domanda su prezzi, installazione o privacy: ti rispondo come farei sul tuo sito.',
       launcherLabel: '',
       quickReplies: ['Quanto costa?', 'Come si installa?', 'Funziona su WordPress?'],
       fallbackMessage: 'Su questo non ho una risposta pronta: in un sito vero, qui proporrei di lasciare i recapiti. Prova a chiedermi dei prezzi o di come si installa.',
@@ -53,7 +53,7 @@ if (!M.getWidgetByPublicId(DEMO_WIDGET_ID)) {
   const faq = [
     ['Quanto costa?', 'Ci sono quattro piani: Start a 29 €/mese (1 sito), Pro a 79 € (3 siti), Business a 199 € (10 siti) e Agency a 349 € (25 siti). Prezzi IVA esclusa, con 14 giorni di prova gratuita e due mesi gratis pagando annualmente.', 'prezzi costo piani abbonamento listino euro'],
     ['Come si installa?', 'Copi una riga di codice dalla dashboard e la incolli nel sito prima di </body>. Su WordPress c’è il plugin; se il sito non si può modificare, usi la pagina chat ospitata.', 'installare installazione codice script riga'],
-    ['Funziona su WordPress?', 'Sì. Installi il plugin Sportello, apri Impostazioni → Sportello e incolli il codice del tuo assistente. Funziona anche su Wix, Shopify, Joomla e siti in HTML.', 'wordpress plugin wix shopify joomla'],
+    ['Funziona su WordPress?', 'Sì. Installi il plugin Aperto, apri Impostazioni → Aperto e incolli il codice del tuo assistente. Funziona anche su Wix, Shopify, Joomla e siti in HTML.', 'wordpress plugin wix shopify joomla'],
     ['Usate l’intelligenza artificiale?', 'In questa versione no: l’assistente risponde solo con le risposte che scrivi tu, scegliendo quella più vicina alla domanda. Così non inventa nulla.', 'intelligenza artificiale ai chatgpt inventa'],
     ['Dove sono i dati?', 'Conversazioni e contatti restano su server in Unione Europea. Il widget non usa cookie di profilazione e mostra sempre l’avviso che si sta parlando con un assistente automatico.', 'dati privacy gdpr server europa cookie'],
     ['Posso provarlo gratis?', 'Sì, 14 giorni gratis senza carta di credito. Ti registri, scegli il settore e parti con le domande più frequenti già scritte.', 'prova gratis gratuita trial'],

@@ -141,6 +141,7 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.php': 'text/plain; charset=utf-8',
   '.zip': 'application/zip',
+  '.woff2': 'font/woff2',
   '.html': 'text/html; charset=utf-8',
 };
 

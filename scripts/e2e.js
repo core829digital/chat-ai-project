@@ -1,5 +1,5 @@
 // Prova end-to-end in un browser vero (Chrome headless via DevTools Protocol, nessuna dipendenza).
-// - Avvia Sportello su un database temporaneo con i dati di esempio.
+// - Avvia Aperto su un database temporaneo con i dati di esempio.
 // - Avvia un secondo server che finge di essere il sito di un cliente (vecchio stile, CSS aggressivo).
 // - Usa il widget come un visitatore, entra in dashboard come cliente e come admin.
 // - Salva screenshot in ./screenshots e fallisce se trova errori nella console.
@@ -15,7 +15,7 @@ const APP_PORT = 3150;
 const SITE_PORT = 3151;
 const DEBUG_PORT = 9333;
 const BASE = `http://localhost:${APP_PORT}`;
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sportello-e2e-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aperto-e2e-'));
 Object.assign(process.env, {
   DB_PATH: path.join(tmp, 'e2e.db'), PORT: String(APP_PORT), BASE_URL: BASE,
   ADMIN_EMAIL: 'admin@e2e.local', ADMIN_PASSWORD: 'admin-e2e-password',
@@ -145,7 +145,7 @@ async function goto(url) {
   });
   await page('Page.navigate', { url });
   await loaded;
-  await sleep(350);
+  await sleep(900); // fine della transizione tra pagine e delle comparse
 }
 async function evaluate(expression) {
   const r = await page('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
@@ -188,9 +188,10 @@ async function login(email, password) {
   });
   await submitForm('form[action="/accedi"]', { email, password });
   await loaded;
+  await sleep(900);
 }
 
-const W = (pid) => `document.querySelector('#sportello-${pid}')`;
+const W = (pid) => `document.querySelector('#aperto-${pid}')`;
 const S = (pid) => `${W(pid)}.shadowRoot`;
 // Scrive nel widget come farebbe un visitatore e attende la risposta.
 async function askWidget(pid, text) {
@@ -204,6 +205,19 @@ async function askWidget(pid, text) {
   })()`);
   await waitFor(`${S(pid)}.querySelectorAll('.msg.bot').length > ${before}`, `risposta a "${text}"`);
   return evaluate(`[...${S(pid)}.querySelectorAll('.msg.bot')].at(-1).textContent`);
+}
+
+// Su un telefono vero Chrome rimpicciolisce le pagine troppo larghe: innerWidth cresce e nasconde il problema.
+// Per questo si misura contro la larghezza reale del telefono (390px), non contro la finestra.
+const PHONE_WIDTH = 390;
+async function checkFitsPhone(label) {
+  const layoutWidth = await evaluate('innerWidth');
+  const wide = await evaluate(`[...document.querySelectorAll('body *')].filter(e => {
+      // esclude ciò che sta dentro un contenitore che scorre da solo (marquee, blocchi di codice, tabelle)
+      const r = e.getBoundingClientRect(); return r.width && r.right > ${PHONE_WIDTH} + 1 && !e.closest('.marquee, pre, .table-wrap, .tabs, .side-nav, .demo-tabs, [data-aperto]');
+    }).slice(0, 5).map(e => e.tagName.toLowerCase() + '.' + [...e.classList].join('.') + ' ' + Math.round(e.getBoundingClientRect().right))`);
+  const ok = layoutWidth <= PHONE_WIDTH && !wide.length;
+  check(ok, `${label}: niente esce dallo schermo da ${PHONE_WIDTH}px${ok ? '' : ` — pagina larga ${layoutWidth}px, sporgono: ${wide.join(', ') || '—'}`}`);
 }
 
 const results = [];
@@ -223,7 +237,7 @@ try {
   check(await evaluate(`getComputedStyle(${S(locanda.public_id)}.querySelector('.launcher')).display !== 'none'`), 'il CSS del sito (button{display:none}) non nasconde il widget');
   await shot('01-sito-cliente-chiuso');
   await evaluate(`${S(locanda.public_id)}.querySelector('.launcher').click()`);
-  await sleep(300);
+  await sleep(700);
   check(await evaluate(`${S(locanda.public_id)}.querySelector('.notice').textContent.includes('assistente virtuale')`), 'avviso AI Act visibile');
   const a1 = await askWidget(locanda.public_id, 'A che ora è il check-in?');
   check(a1.includes('14:00'), `risposta check-in: "${a1.slice(0, 60)}…"`);
@@ -244,7 +258,7 @@ try {
   // la conversazione sopravvive al cambio pagina
   await goto(`http://localhost:${SITE_PORT}/altra-pagina`);
   await waitFor(`!!${W(locanda.public_id)}`, 'widget dopo cambio pagina');
-  await sleep(300);
+  await sleep(700);
   check(await evaluate(`${S(locanda.public_id)}.querySelectorAll('.msg').length >= 5`), 'la conversazione resta tra una pagina e l’altra');
 
   // mobile
@@ -252,7 +266,7 @@ try {
   await goto(`http://localhost:${SITE_PORT}/`);
   await waitFor(`!!${W(locanda.public_id)}`, 'widget mobile');
   await evaluate(`${S(locanda.public_id)}.querySelector('.launcher').click()`);
-  await sleep(300);
+  await sleep(700);
   // Sito vecchio senza meta viewport: il telefono lo impagina a 980px e lo rimpicciolisce.
   const fill = `(() => { const r = ${S(locanda.public_id)}.querySelector('.panel').getBoundingClientRect();
     return r.left <= 1 && r.top <= 1 && r.right >= innerWidth - 2 && r.bottom >= innerHeight - 2; })()`;
@@ -263,26 +277,52 @@ try {
   await goto(`http://localhost:${SITE_PORT}/moderno`);
   await waitFor(`!!${W(locanda.public_id)}`, 'widget sito moderno');
   await evaluate(`${S(locanda.public_id)}.querySelector('.launcher').click()`);
-  await sleep(300);
+  await sleep(700);
   check(await evaluate(fill), 'sito moderno su mobile: la chat occupa tutto lo schermo');
   await shot('05-sito-moderno-mobile');
 
   // ---------- 2. Landing page ----------
   await viewport(1440, 900);
   await goto(`${BASE}/`);
-  await shot('10-landing-desktop', { full: true });
+  // demo animata dell'hero: i messaggi compaiono uno alla volta e arriva la notifica del contatto
+  check((await evaluate(`document.querySelectorAll('[data-demo-log] p').length`)) < 4, 'demo hero: la conversazione parte da capo e si costruisce');
+  await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'notifica nuovo contatto nella demo', 9000);
+  check((await evaluate(`document.querySelectorAll('[data-demo-log] .m-bot').length`)) === 2, 'demo hero: due risposte dell’assistente');
+  await sleep(700);
+  const noOverlap = `(() => { const a = document.querySelector('[data-demo-notify]').getBoundingClientRect();
+    const b = document.querySelector('[data-demo-chat]').getBoundingClientRect();
+    return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top; })()`;
+  check(await evaluate(noOverlap), 'demo hero: la notifica non copre la chat (desktop)');
   await shot('11-landing-hero');
+  await evaluate(`document.querySelector('[data-demo-tab=sanita]').click()`);
+  await waitFor(`document.querySelector('[data-demo-site]').textContent === 'studiobianchi.it'`, 'cambio settore nella demo');
+  await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'demo studio medico completa', 9000);
+  check((await evaluate(`document.querySelector('[data-demo-tab=sanita]').getAttribute('aria-selected')`)) === 'true', 'demo hero: scheda settore selezionata e accessibile');
+  await shot('11b-landing-hero-studio');
+  // scorre la pagina come un visitatore, così le sezioni animate compaiono
+  await evaluate(`(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); } })()`);
+  await sleep(1600);
+  check((await evaluate(`[...document.querySelectorAll('[data-reveal]')].filter(e => !e.classList.contains('is-in')).length`)) === 0, 'tutte le sezioni compaiono durante lo scroll');
+  check((await evaluate(`document.querySelector('[data-count="25"]').textContent`)) === '25', 'contatori animati arrivano al valore finale');
+  await evaluate('scrollTo(0, 0)');
+  await sleep(400);
+  await shot('10-landing-desktop', { full: true });
   await evaluate(`document.querySelector('[data-billing=yearly]').click()`);
+  await waitFor(`document.querySelector('.plan-featured .price-n').textContent === '66'`, 'prezzo annuale animato');
   check((await evaluate(`document.querySelector('.plan-featured .price-n').textContent`)) === '66', 'prezzi annuali: Pro 66 €/mese');
   await evaluate(`document.querySelector('[data-open-demo]').click()`);
-  await waitFor(`!!${S('wdg_sportellodemo')} && ${S('wdg_sportellodemo')}.querySelector('.sp').classList.contains('open')`, 'demo aperta');
-  const demo = await askWidget('wdg_sportellodemo', 'quanto costa al mese?');
+  await waitFor(`!!${S('wdg_apertodemo')} && ${S('wdg_apertodemo')}.querySelector('.sp').classList.contains('open')`, 'demo aperta');
+  const demo = await askWidget('wdg_apertodemo', 'quanto costa al mese?');
   check(demo.includes('29 €'), 'la demo della landing risponde sui prezzi');
   await shot('12-landing-demo');
   await viewport(390, 844, true);
   await goto(`${BASE}/`);
+  await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'demo mobile completa', 9000);
+  await sleep(700);
+  check(await evaluate(noOverlap), 'demo hero: la notifica non copre la chat (mobile)');
+  await shot('13b-landing-mobile-hero');
   await shot('13-landing-mobile', { full: true });
-  check(await evaluate(`document.documentElement.scrollWidth <= 390`), 'landing mobile senza scroll orizzontale');
+  await checkFitsPhone('landing mobile');
 
   // ---------- 3. Dashboard cliente ----------
   await viewport(1440, 900);
@@ -320,7 +360,7 @@ try {
   await viewport(390, 844, true);
   await goto(`${BASE}/app`);
   await shot('28-cliente-mobile', { full: true });
-  check(await evaluate(`document.documentElement.scrollWidth <= 390`), 'dashboard mobile senza scroll orizzontale');
+  await checkFitsPhone('dashboard mobile');
 
   // ---------- 4. Pannello admin ----------
   await viewport(1440, 900);
@@ -343,7 +383,8 @@ try {
     sector: 'hotel', plan: 'pro', status: 'trial', createWidget: true, siteUrl: 'https://www.ilpoggio.example',
   });
   await loaded;
-  await sleep(300);
+  await sleep(900);
+  await sleep(700);
   currentUrl = await evaluate('location.href');
   check(await evaluate(`document.body.textContent.includes('Link di invito pronto')`), 'admin: link di invito mostrato dopo la creazione');
   await shot('32-admin-cliente-creato', { full: true });
@@ -360,7 +401,7 @@ try {
   // ---------- 5. Pagina chat ospitata ----------
   await goto(`${BASE}/c/${locanda.public_id}`);
   await waitFor(`!!${W(locanda.public_id)}`, 'chat ospitata');
-  await sleep(300);
+  await sleep(700);
   await shot('40-chat-ospitata');
 } catch (err) {
   problems.push(`Interrotto: ${err.message}`);
