@@ -202,8 +202,6 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); p
 /* Come funziona */
 .steps { position: relative; list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
 .steps::before { content: ""; position: absolute; top: 158px; left: 16%; right: 16%; height: 2px; background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 14px); transform-origin: left; transition: transform 1.4s var(--ease) .3s; }
-.js .steps[data-reveal] { opacity: 1; transform: none; }
-.js .steps:not(.is-in)::before { transform: scaleX(0); }
 .step { position: relative; }
 .step-visual { height: 140px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); display: grid; place-items: center; padding: 18px; margin-bottom: 30px; box-shadow: var(--shadow); transition: transform .4s var(--ease), box-shadow .4s var(--ease); }
 .step:hover .step-visual { transform: translateY(-4px); box-shadow: var(--shadow-lift); }
@@ -514,3 +512,123 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); p
 @media (prefers-reduced-motion: reduce) {
   .browser, .chat-mock, .notify { translate: none; }
 }
+
+/* =====================================================================
+   SISTEMA DI MOVIMENTO
+   Regole fisse per tutto il sito (vedi docs/motion-design.md):
+   - Durate:  xs 180ms (stati) · s 320ms (micro) · m 550ms (componenti) · l 900ms (comparse) · xl 1300ms (titoli)
+   - Curve:   out = entrate, in-out = spostamenti tra stati, spring = elementi che "arrivano"
+   - Ritmo:   70ms tra elementi fratelli, 45ms tra parole
+   - Scroll:  gli effetti legati allo scroll non hanno transizione: seguono il dito e si riavvolgono
+   ===================================================================== */
+:root {
+  --dur-xs: .18s; --dur-s: .32s; --dur-m: .55s; --dur-l: .9s; --dur-xl: 1.3s;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --stagger: 70ms;
+}
+
+/* Comparse più morbide: salita + leggera messa a fuoco */
+.js [data-reveal] { filter: blur(8px); transition: opacity var(--dur-l) var(--ease-out), transform var(--dur-l) var(--ease-out), filter var(--dur-l) var(--ease-out); transition-delay: calc(var(--i, 0) * var(--stagger)); }
+.js [data-reveal].is-in { filter: none; }
+.js [data-reveal].is-done { filter: none; transition-delay: 0s; transition-duration: var(--dur-s); }
+
+/* Titoli che entrano parola per parola, da dietro una linea invisibile */
+.words .w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .12em; margin-bottom: -.12em; }
+.words .w > span { display: inline-block; }
+.js [data-reveal] .words .w > span { transform: translateY(112%); transition: transform var(--dur-xl) var(--ease-out); transition-delay: calc(var(--wi) * 45ms + 140ms); }
+.js [data-reveal].is-in .words .w > span { transform: none; }
+.hero-copy > .display { animation: none; }
+.display.words .w > span { animation: word-up var(--dur-xl) var(--ease-out) both; animation-delay: calc(var(--wi) * 60ms + 120ms); }
+@keyframes word-up { from { transform: translateY(112%); } }
+
+/* Pulsante principale: riflesso che attraversa al passaggio del mouse */
+.btn-primary { overflow: hidden; }
+.btn-primary::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .26) 50%, transparent 70%); transform: translateX(-120%); transition: transform .8s var(--ease-out); }
+.btn-primary:hover::after { transform: translateX(120%); }
+
+/* Menu: indicatore che scorre sotto la sezione corrente */
+.nav { position: relative; }
+.nav-ink { position: absolute; left: 0; bottom: 1px; height: 2px; width: 0; border-radius: 2px; background: var(--accent); opacity: 0; pointer-events: none; transition: transform var(--dur-m) var(--ease-out), width var(--dur-m) var(--ease-out), opacity var(--dur-s); }
+.nav a.is-current { color: var(--ink); }
+
+/* ---------- Video di sezione con parallasse ---------- */
+.has-video { position: relative; overflow: clip; isolation: isolate; }
+.has-video > .wrap { position: relative; z-index: 1; }
+.section-video { position: absolute; inset: -14% 0; z-index: 0; pointer-events: none; opacity: .5; translate: 0 calc((var(--p, .5) - .5) * -18%); -webkit-mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); }
+.section-video video { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .85; transition: opacity 1.2s var(--ease-out); }
+.section-video.is-playing video { opacity: 1; }
+#come-funziona .section-video { opacity: .55; }
+.section-dark .section-video { opacity: .95; -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, .35) 30%, #000 60%); mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, .35) 30%, #000 60%); }
+.cta-final .section-video { opacity: .9; }
+.cta-final { padding: 150px 0; }
+
+/* ---------- Eroe: uscita legata allo scroll ---------- */
+.motion-on .hero-copy { translate: 0 calc(var(--px, 0) * -90px); opacity: calc(1 - var(--px, 0) * 1.6); }
+.motion-on .hero-stage { translate: 0 calc(var(--px, 0) * 70px); scale: calc(1 - var(--px, 0) * .07); }
+
+/* ---------- Dichiarazione: testo fissato che si accende parola per parola ---------- */
+.manifesto { position: relative; height: 240vh; background: var(--paper); }
+.manifesto-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; display: grid; align-items: center; overflow: hidden; isolation: isolate; }
+.manifesto .section-video { inset: 0; translate: none; opacity: 1; scale: calc(1.14 - var(--pp, 1) * .14); -webkit-mask-image: none; mask-image: none; }
+.manifesto .wrap { position: relative; z-index: 1; }
+.manifesto-text { font: 400 clamp(1.9rem, 4.3vw, 3.7rem)/1.17 var(--serif); letter-spacing: -.02em; max-width: 21em; }
+.manifesto-text .w { display: inline; }
+.manifesto-text .w > span { opacity: clamp(.13, calc((var(--pp, 1) * 1.25 - var(--wi)) * 7), 1); transition: opacity .12s linear; }
+.manifesto-text .is-accent > span { color: var(--accent); }
+
+/* ---------- Piattaforme: la fascia segue la velocità dello scroll ---------- */
+.marquee-track { translate: var(--shift, 0px) 0; }
+.marquee-track li { display: inline-block; transform: skewX(var(--skew, 0deg)); transition: transform .35s var(--ease-out); }
+
+/* ---------- Come funziona: linea, passaggi e codice guidati dallo scroll ---------- */
+.motion-on .steps[data-scroll]::before { transform: scaleX(clamp(0, calc((var(--pe, 1) - .28) / .62), 1)); transition: none; }
+.step-n { transition: background var(--dur-m), transform var(--dur-m) var(--spring); }
+.motion-on .step.is-on .step-n { background: var(--accent); transform: scale(1.12); }
+.motion-on .step .step-visual { transition: opacity var(--dur-m), transform .4s var(--ease-out), box-shadow .4s var(--ease-out); }
+.motion-on .step:not(.is-on) .step-visual { opacity: .5; }
+.mini-kb li, .mini-copy, .mini-lead { transition: opacity var(--dur-m) var(--ease-out), transform var(--dur-l) var(--ease-out); }
+.motion-on .step:not(.is-on) .mini-kb li { opacity: 0; transform: translateX(-12px); }
+.motion-on .step.is-on .mini-kb li:nth-child(2) { transition-delay: .1s; }
+.motion-on .step.is-on .mini-kb li:nth-child(3) { transition-delay: .2s; }
+.motion-on .step:not(.is-on) .mini-copy { opacity: 0; transform: translateY(4px); }
+.motion-on .step.is-on .mini-copy { transition-delay: .35s; }
+.motion-on .step:not(.is-on) .mini-lead { opacity: 0; transform: translateY(18px) scale(.94); }
+.motion-on [data-scroll="type"]:not(.is-typed) code::after { content: ""; display: inline-block; width: .55ch; height: 1.1em; margin-left: 1px; background: #9fe0bf; vertical-align: text-bottom; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+/* ---------- Settori: colonne a velocità diverse (profondità) ---------- */
+.motion-on .sector-grid > :nth-child(3n+1) { translate: 0 calc((var(--p, .5) - .5) * 60px); }
+.motion-on .sector-grid > :nth-child(3n+2) { translate: 0 calc((var(--p, .5) - .5) * -30px); }
+.motion-on .sector-grid > :nth-child(3n) { translate: 0 calc((var(--p, .5) - .5) * 100px); }
+
+/* ---------- Regole europee: titolo fermo mentre i punti scorrono, spunte che si disegnano ---------- */
+.section-alt .split > div:first-child { position: sticky; top: 120px; }
+.js .checklist .i path { stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .8s var(--ease-out) .35s; }
+.js .checklist li.is-in .i path { stroke-dashoffset: 0; }
+
+/* ---------- Agenzie: la sezione scura si apre da scheda a tutto schermo ---------- */
+.motion-on .section-dark[data-scroll] { --k: clamp(0, calc((var(--pe, 1) - .05) / .7), 1); clip-path: inset(calc((1 - var(--k)) * 5%) calc((1 - var(--k)) * 4%) round calc((1 - var(--k)) * 40px)); }
+.motion-on .section-dark[data-scroll] > .wrap { translate: 0 calc((1 - var(--k)) * 50px); }
+
+/* ---------- Prezzi: i piani si alzano in 3D uno dopo l'altro ---------- */
+.motion-on .pricing[data-scroll] { perspective: 1400px; }
+.motion-on .pricing[data-scroll] .plan { --k: clamp(0, calc((var(--pe, 1) - .12 - var(--o, 0)) * 2.4), 1); opacity: var(--k); rotate: x calc((1 - var(--k)) * 30deg); translate: 0 calc((1 - var(--k)) * 60px); transform-origin: 50% 100%; }
+
+/* ---------- Chiamata finale: il titolo si accende con lo scroll ---------- */
+.words-scrub .w { display: inline-block; }
+.motion-on .words-scrub .w > span { display: inline-block; --k: clamp(0, calc((var(--pe, 1) * 1.5 - .2 - var(--wi)) * 4), 1); opacity: calc(.12 + var(--k) * .88); translate: 0 calc((1 - var(--k)) * 14px); }
+
+@media (max-width: 960px) {
+  .section-alt .split > div:first-child { position: static; }
+  .motion-on .sector-grid > * { translate: none !important; }
+  .manifesto { height: 200vh; }
+  .section-video { inset: -8% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal] { filter: none; }
+  .section-video { translate: none; }
+}
+
+/* Chiamata finale: alone chiaro dietro al testo, così il video resta sfondo e non disturba la lettura */
+.cta-final .wrap::before { content: ""; position: absolute; left: 50%; top: 50%; width: min(820px, 92vw); height: 340px; translate: -50% -50%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgba(246, 244, 239, .92), rgba(246, 244, 239, 0)); pointer-events: none; }

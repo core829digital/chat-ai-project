@@ -29,7 +29,7 @@ export function createApp() {
           if (serveFile(res, path.join(publicDir, 'widget'), 'w.js', { cors: true, maxAge: 300 })) return;
         }
         if (ctx.path.startsWith('/static/')) {
-          if (serveFile(res, publicDir, ctx.path.slice('/static/'.length), { maxAge: 3600 })) return;
+          if (serveFile(res, publicDir, ctx.path.slice('/static/'.length), { maxAge: 3600, req })) return;
           throw new HttpError(404, 'File non trovato');
         }
         if (ctx.path === '/favicon.ico' || ctx.path === '/favicon.svg') {

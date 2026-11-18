@@ -71,7 +71,10 @@ let widget;
 test('landing: contenuti principali e intestazioni di sicurezza', async () => {
   const r = await new Client().get('/');
   assert.equal(r.status, 200);
-  assert.match(r.text, /Il tuo sito risponde ai clienti/);
+  // il titolo è diviso in parole animate: si controlla il testo leggibile, come lo legge un motore di ricerca
+  const readable = r.text.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  assert.match(readable, /Il tuo sito risponde ai clienti\. Anche alle undici di sera\./);
+  assert.match(readable, /Ogni domanda che resta senza risposta è un cliente che cerca altrove\./);
   assert.match(r.text, /data-monthly="79"/);
   assert.match(r.headers.get('content-security-policy'), /script-src 'self'/);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');

@@ -214,7 +214,7 @@ async function checkFitsPhone(label) {
   const layoutWidth = await evaluate('innerWidth');
   const wide = await evaluate(`[...document.querySelectorAll('body *')].filter(e => {
       // esclude ciò che sta dentro un contenitore che scorre da solo (marquee, blocchi di codice, tabelle)
-      const r = e.getBoundingClientRect(); return r.width && r.right > ${PHONE_WIDTH} + 1 && !e.closest('.marquee, pre, .table-wrap, .tabs, .side-nav, .demo-tabs, [data-aperto]');
+      const r = e.getBoundingClientRect(); return r.width && r.right > ${PHONE_WIDTH} + 1 && !e.closest('.marquee, pre, .table-wrap, .tabs, .side-nav, .demo-tabs, [data-aperto], .section-video');
     }).slice(0, 5).map(e => e.tagName.toLowerCase() + '.' + [...e.classList].join('.') + ' ' + Math.round(e.getBoundingClientRect().right))`);
   const ok = layoutWidth <= PHONE_WIDTH && !wide.length;
   check(ok, `${label}: niente esce dallo schermo da ${PHONE_WIDTH}px${ok ? '' : ` — pagina larga ${layoutWidth}px, sporgono: ${wide.join(', ') || '—'}`}`);
@@ -340,6 +340,75 @@ try {
   await shot('17-storia-mattino');
   const back = await storyAt(0.3);
   check(!back.day && back.notes === 0 && back.chapter === 1, 'storia: tornando indietro con lo scroll la notte si riavvolge');
+
+  // ---- motore di scroll: ogni effetto segue la posizione e si riavvolge ----
+  // porta il bordo alto dell'elemento a una frazione dell'altezza dello schermo (0 = in alto, 1 = in fondo)
+  const placeAt = (sel, frac) => evaluate(`(async () => {
+    const el = document.querySelector(${JSON.stringify(sel)});
+    const top = el.getBoundingClientRect().top + scrollY;
+    scrollTo({ top: top - innerHeight * ${frac}, behavior: 'instant' });
+    await new Promise(r => setTimeout(r, 700));
+  })()`);
+  // scorre dentro una sezione fissata (sticky) in base all'avanzamento 0..1
+  const pinnedAt = (sel, p) => evaluate(`(async () => {
+    const el = document.querySelector(${JSON.stringify(sel)});
+    const top = el.getBoundingClientRect().top + scrollY;
+    scrollTo({ top: top + (el.offsetHeight - innerHeight) * ${p}, behavior: 'instant' });
+    await new Promise(r => setTimeout(r, 700));
+  })()`);
+  const lastWordOpacity = `Number(getComputedStyle([...document.querySelectorAll('.manifesto-text .w > span')].at(-1)).opacity)`;
+
+  await evaluate(`scrollTo({ top: 420, behavior: 'instant' })`);
+  await sleep(600);
+  check((await evaluate(`Number(getComputedStyle(document.querySelector('.hero-copy')).opacity)`)) < 0.95, 'hero: il testo si dissolve scorrendo verso il basso');
+
+  await pinnedAt('.manifesto', 0.02);
+  check((await evaluate(lastWordOpacity)) < 0.3, 'dichiarazione: all’inizio le ultime parole sono spente');
+  await pinnedAt('.manifesto', 0.5);
+  await shot('18-dichiarazione');
+  await pinnedAt('.manifesto', 0.98);
+  check((await evaluate(lastWordOpacity)) > 0.95, 'dichiarazione: alla fine tutte le parole sono accese');
+
+  await placeAt('.steps', 0.97);
+  check((await evaluate(`document.querySelectorAll('.steps > .is-on').length`)) === 0, 'come funziona: i passaggi sono spenti prima di arrivarci');
+  await placeAt('.steps', 0.6);
+  const midSteps = await evaluate(`document.querySelectorAll('.steps > .is-on').length`);
+  check(midSteps >= 1 && midSteps < 3, `come funziona: i passaggi si accendono uno alla volta (${midSteps} di 3 a metà strada)`);
+  await shot('19-come-funziona-in-corso');
+  await placeAt('.steps', 0.12);
+  check((await evaluate(`document.querySelectorAll('.steps > .is-on').length`)) === 3, 'come funziona: tutti i passaggi accesi');
+  await placeAt('.code-card', 0.1);
+  check(await evaluate(`document.querySelector('[data-scroll=type]').classList.contains('is-typed') && document.querySelector('[data-type]').textContent.includes('w.js')`), 'come funziona: il codice si scrive da solo fino in fondo');
+  await placeAt('.steps', 0.97);
+  check((await evaluate(`document.querySelectorAll('.steps > .is-on').length`)) === 0, 'come funziona: tornando su i passaggi si spengono di nuovo');
+
+  await placeAt('#agenzie', 0.85);
+  const clipStart = await evaluate(`getComputedStyle(document.querySelector('#agenzie')).clipPath`);
+  check(/inset\((?!0px 0px)/.test(clipStart) && /round/.test(clipStart), `agenzie: entra come una scheda con bordi arrotondati (${clipStart.slice(0, 40)})`);
+  await placeAt('#agenzie', 0.45);
+  await shot('20-agenzie-apertura');
+  await placeAt('#agenzie', 0.02);
+  const clipEnd = await evaluate(`getComputedStyle(document.querySelector('#agenzie')).clipPath`);
+  // a fine apertura il ritaglio è nullo: il browser può scriverlo come 0px, 0% o "none"
+  const clipNums = (clipEnd.match(/-?\d*\.?\d+/g) || []).map(Number);
+  check(clipEnd === 'none' || clipNums.every((n) => Math.abs(n) < 0.01), `agenzie: si apre fino a occupare tutta la larghezza (${clipEnd})`);
+  await sleep(1500);
+  check(await evaluate(`(() => { const v = document.querySelector('#agenzie video'); return !!v.currentSrc && !v.paused && v.readyState >= 2; })()`), 'agenzie: il video di sfondo è caricato e in riproduzione');
+  await shot('21-agenzie-video');
+
+  await placeAt('.pricing', 0.9);
+  check((await evaluate(`Number(getComputedStyle(document.querySelector('.plan')).opacity)`)) < 0.5, 'prezzi: i piani sono ancora abbassati prima di arrivarci');
+  await placeAt('.pricing', 0.55);
+  await shot('22-prezzi-in-salita');
+  await placeAt('.pricing', 0.08);
+  check(await evaluate(`[...document.querySelectorAll('.plan')].every(p => Number(getComputedStyle(p).opacity) > 0.98)`), 'prezzi: tutti i piani alzati e visibili');
+  check(await evaluate(`document.querySelector('.nav a[href="/#prezzi"]').classList.contains('is-current')`), 'menu: evidenzia la sezione Prezzi mentre la si legge');
+
+  await placeAt('.cta-final', 0.1);
+  await sleep(1200);
+  check(await evaluate(`[...document.querySelectorAll('.words-scrub .w > span')].every(s => Number(getComputedStyle(s).opacity) > 0.95)`), 'chiamata finale: il titolo si accende tutto');
+  await shot('23-chiamata-finale');
+  check(await evaluate(`[...document.querySelectorAll('video[data-src]')].every(v => !v.currentSrc || v.closest('section') !== null)`), 'video: caricati solo quando servono');
 
   // scorre la pagina come un visitatore, così le sezioni animate compaiono
   await evaluate(`(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); } })()`);

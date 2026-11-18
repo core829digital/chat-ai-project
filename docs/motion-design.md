@@ -14,6 +14,49 @@ La casualità è sempre seminata. Il seme è **2240**, l'ora in cui nessuno risp
 
 L'interazione è discreta: nell'hero il cursore agisce come una lente che accelera e accende i segnali vicini, legandoli con fili sottili, come una conversazione che si accende al passaggio. Nessun effetto è decorativo fine a se stesso: tutto racconta il passaggio da domanda a risposta a contatto, con l'artigianalità di un sistema rifinito iterazione dopo iterazione.
 
+## Sistema di movimento
+
+Tutte le animazioni del sito seguono le stesse regole (variabili in `public/css/site.css`):
+
+| Elemento | Valore | Uso |
+| --- | --- | --- |
+| Durate | 180 / 320 / 550 / 900 / 1300 ms | stati, micro-interazioni, componenti, comparse, titoli |
+| Curva "out" | `cubic-bezier(.16, 1, .3, 1)` | tutto ciò che entra |
+| Curva "in-out" | `cubic-bezier(.65, 0, .35, 1)` | passaggi tra due stati |
+| Curva "spring" | `cubic-bezier(.34, 1.4, .64, 1)` | elementi che "arrivano" (notifiche, numeri dei passaggi) |
+| Ritmo | 70 ms tra elementi, 45 ms tra parole | sequenze |
+| Scroll | nessuna transizione | gli effetti seguono il dito e si riavvolgono |
+
+### Motore di scroll
+
+Ogni elemento con `data-scroll` riceve dal motore (in `public/js/motion.js`) quattro valori aggiornati a ogni fotogramma:
+`--pe` (entrata), `--p` (passaggio), `--px` (uscita), `--pp` (avanzamento mentre la sezione è fissata). Il CSS li usa direttamente.
+Senza JavaScript o con "riduci movimento" i valori restano quelli finali: la pagina è completa e ferma.
+
+### Coreografia per sezione
+
+| Sezione | Effetto legato allo scroll |
+| --- | --- |
+| Hero | il testo sale e sfuma, la demo arretra; campo generativo che reagisce al cursore |
+| Dichiarazione | sezione fissata, il testo si accende parola per parola; video "aurora" con zoom lento |
+| Piattaforme | la fascia accelera e si inclina con la velocità dello scroll |
+| Una notte | racconto fissato: cielo, orologio, chat e telefono guidati dallo scroll |
+| Come funziona | linea che si disegna, passaggi che si accendono, codice che si scrive; video "flusso" in parallasse |
+| Settori | colonne a velocità diverse |
+| Regole europee | titolo fermo mentre i punti scorrono, spunte che si disegnano |
+| Agenzie | la sezione si apre da scheda arrotondata a tutto schermo; video "rete" |
+| Prezzi | i piani si alzano in 3D uno dopo l'altro |
+| Chiamata finale | il titolo si accende con lo scroll; video "onde" |
+| Menu | indicatore che segue la sezione in lettura |
+
+## Video
+
+I quattro video (`public/media/*.webm`, ~650–800 KB ciascuno, 1280×720, ciclo perfetto di 8–10 s) sono generati in codice:
+le scene sono in `scripts/video-scenes.html`, la registrazione con `npm run videos` (Chrome in background + MediaRecorder).
+Ogni scena è periodica sulla sua durata, quindi il ciclo non ha scatti. Accanto a ogni video c'è un'immagine `.jpg`
+del primo fotogramma, usata come anteprima e come sostituto con "riduci movimento" o dove l'autoplay è bloccato.
+I video si caricano solo quando stanno per entrare nello schermo e si fermano quando escono.
+
 ## Regole tecniche
 
 - Un solo ciclo `requestAnimationFrame`, sospeso quando il canvas non è visibile o la scheda è in background.

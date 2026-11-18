@@ -6,6 +6,34 @@ import { icon, publicLayout } from './layout.js';
 const snippet = (id = 'wdg_abc123') => `<script src="${config.baseUrl}/w.js" data-id="${id}" async></script>`;
 const brand = config.brand.name;
 
+// Divide un testo in parole animabili: resta testo normale per lettori di schermo e senza JavaScript.
+// --wi = indice della parola, oppure frazione 0..1 se total è indicato (effetti legati allo scroll).
+function words(text, { start = 0, total = 0, cls = '' } = {}) {
+  const list = String(text).split(' ');
+  return html`${list.map((w, i) => {
+    const wi = total ? ((start + i) / total).toFixed(3) : start + i;
+    return html`<span class="w${cls ? ' ' + cls : ''}" style="--wi:${wi}"><span>${w}</span></span>${i < list.length - 1 ? ' ' : ''}`;
+  })}`;
+}
+
+// Video generati in codice (scripts/video-scenes.html), caricati solo quando stanno per comparire.
+const sectionVideo = (name) => html`<div class="section-video" aria-hidden="true"><video muted loop playsinline preload="none" poster="/static/media/${name}.jpg" data-src="/static/media/${name}.webm"></video></div>`;
+
+const MANIFESTO = [
+  ['Ogni domanda che resta senza risposta è un cliente che cerca altrove.', ''],
+  ['Il tuo sito può rispondere anche quando sei chiuso,', 'is-accent'],
+  ['con le tue parole, e lasciarti il contatto per domattina.', ''],
+];
+function manifestoText() {
+  const total = MANIFESTO.reduce((n, [t]) => n + t.split(' ').length, 0);
+  let start = 0;
+  return html`${MANIFESTO.map(([t, cls], i) => {
+    const out = html`${words(t, { start, total, cls })}${i < MANIFESTO.length - 1 ? ' ' : ''}`;
+    start += t.split(' ').length;
+    return out;
+  })}`;
+}
+
 const PLAN_COPY = {
   start: { who: 'Per chi ha un sito e vuole smettere di rispondere sempre alle stesse domande.', features: ['1 sito', '500 conversazioni al mese', 'Modello del tuo settore', 'Raccolta contatti', `Marchio ${brand} nel widget`] },
   pro: { who: 'Per le attività che ricevono richieste ogni giorno e vogliono il proprio marchio.', features: ['3 siti', '2.000 conversazioni al mese', `Senza marchio ${brand}`, 'Esportazione contatti in CSV', 'Domande senza risposta da completare'] },
@@ -80,13 +108,13 @@ export function landingPage(ctx, { demoWidgetId }) {
   const sectors = Object.entries(SECTORS).filter(([id]) => id !== 'generico');
   const first = DEMOS[0];
   const body = html`
-<section class="hero">
+<section class="hero" data-scroll="hero">
   <div class="hero-glow" aria-hidden="true"></div>
   <canvas class="hero-field" data-field="hero" aria-hidden="true"></canvas>
   <div class="wrap hero-grid">
     <div class="hero-copy">
       <p class="pill" style="--i:0"><span class="live-dot" aria-hidden="true"></span>Risponde 24 ore su 24, anche la domenica</p>
-      <h1 class="display" style="--i:1">Il tuo sito risponde ai clienti. <span class="hl">Anche alle undici di sera.</span></h1>
+      <h1 class="display words" style="--i:1">${words('Il tuo sito risponde ai clienti.')} <span class="hl">${words('Anche alle undici di sera.', { start: 6 })}</span></h1>
       <p class="lead" style="--i:2">Un assistente che conosce orari, prezzi e servizi della tua attività. Risponde ai visitatori in pochi secondi e ti passa i contatti di chi vuole parlarti.</p>
       <div class="hero-actions" style="--i:3">
         <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Prova gratis per 14 giorni ${icon('arrow', 16)}</a>
@@ -132,11 +160,18 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="platforms" aria-label="Piattaforme compatibili">
+<section class="platforms" aria-label="Piattaforme compatibili" data-scroll="marquee">
   <p class="platforms-label">Si installa su</p>
   <div class="marquee">
     <ul class="marquee-track">${PLATFORMS.map((p) => html`<li>${p}</li>`)}</ul>
     <ul class="marquee-track" aria-hidden="true">${PLATFORMS.map((p) => html`<li>${p}</li>`)}</ul>
+  </div>
+</section>
+
+<section class="manifesto" data-scroll="manifesto" aria-label="Perché serve">
+  <div class="manifesto-sticky">
+    ${sectionVideo('aurora')}
+    <div class="wrap"><p class="manifesto-text">${manifestoText()}</p></div>
   </div>
 </section>
 
@@ -185,13 +220,14 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section section-alt" id="come-funziona">
+<section class="section section-alt has-video" id="come-funziona" data-scroll>
+  ${sectionVideo('flusso')}
   <div class="wrap">
     <div class="section-head" data-reveal>
       <p class="eyebrow">Come funziona</p>
-      <h2 class="h2">Tre passaggi. Nessuno sviluppatore.</h2>
+      <h2 class="h2 words">${words('Tre passaggi. Nessuno sviluppatore.')}</h2>
     </div>
-    <ol class="steps" data-reveal>
+    <ol class="steps" data-scroll="steps">
       ${step(1, 'Scegli il tuo settore', 'Le domande che i tuoi clienti fanno davvero sono già scritte. Tu inserisci orari, prezzi e dettagli veri.', html`
         <ul class="mini-kb">
           <li><span class="mini-check">${icon('check', 12)}</span>A che ora è il check-in?</li>
@@ -203,9 +239,9 @@ export function landingPage(ctx, { demoWidgetId }) {
       ${step(3, 'Ricevi i contatti', 'Quando non sa rispondere lo dice e raccoglie nome e telefono. Tu trovi tutto nella dashboard.', html`
         <div class="mini-lead"><span class="notify-icon">${icon('inbox', 16)}</span><div><b>Nuovo contatto</b><span>Elena C. · +39 333 …</span></div></div>`)}
     </ol>
-    <div class="code-card" data-reveal>
+    <div class="code-card" data-reveal data-scroll="type">
       <div class="code-card-head"><span>Il codice da incollare nel sito</span><button class="copy-btn" type="button" data-copy="${snippet()}">${icon('copy', 15)} <span>Copia</span></button></div>
-      <pre><code>${snippet()}</code></pre>
+      <pre aria-label="${snippet()}"><code data-type>${snippet()}</code></pre>
     </div>
     <div class="cols-3 install-modes">
       <article class="card" data-spot data-reveal style="--i:1"><h3>Una riga di codice</h3><p>Su qualsiasi sito. Il widget è isolato: non cambia la grafica del sito e non la subisce.</p></article>
@@ -219,10 +255,10 @@ export function landingPage(ctx, { demoWidgetId }) {
   <div class="wrap">
     <div class="section-head" data-reveal>
       <p class="eyebrow">Modelli di settore</p>
-      <h2 class="h2">Non parti da una pagina bianca.</h2>
+      <h2 class="h2 words">${words('Non parti da una pagina bianca.')}</h2>
       <p class="section-lead">Ogni modello contiene le domande che i clienti di quel settore fanno davvero. Tu cambi solo i dettagli.</p>
     </div>
-    <div class="sector-grid">
+    <div class="sector-grid" data-scroll>
       ${sectors.map(([, s], i) => html`<article class="sector" data-spot data-reveal style="--i:${i}">
         <h3>${s.label}</h3>
         <ul>${s.faq.slice(0, 3).map(([q]) => html`<li>${q}</li>`)}</ul>
@@ -239,7 +275,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   <div class="wrap split">
     <div data-reveal>
       <p class="eyebrow">Regole europee</p>
-      <h2 class="h2">Dati in Europa. Trasparenza verso i visitatori.</h2>
+      <h2 class="h2 words">${words('Dati in Europa. Trasparenza verso i visitatori.')}</h2>
       <p class="section-lead">Per uno studio medico, legale o un hotel la conformità non è un dettaglio: decide se puoi usare uno strumento o no.</p>
     </div>
     <ul class="checklist">
@@ -252,11 +288,12 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section section-dark" id="agenzie">
+<section class="section section-dark has-video" id="agenzie" data-scroll>
+  ${sectionVideo('rete')}
   <div class="wrap split">
     <div data-reveal>
       <p class="eyebrow eyebrow-light">Per agenzie web</p>
-      <h2 class="h2">Rivendilo ai tuoi clienti. Gestiscili tutti da una dashboard.</h2>
+      <h2 class="h2 words">${words('Rivendilo ai tuoi clienti. Gestiscili tutti da una dashboard.')}</h2>
       <p class="section-lead">Crei l’assistente per il cliente, lo configuri con il modello del suo settore e glielo consegni con un link di invito. Il cliente controlla le risposte e vede i contatti raccolti. Tu mantieni il controllo di tutto.</p>
       <a class="btn btn-light btn-lg" href="mailto:${config.brand.supportEmail}?subject=Programma%20agenzie">Parliamo del programma partner</a>
     </div>
@@ -272,7 +309,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <p class="eyebrow">Prezzi</p>
-      <h2 class="h2">Un canone fisso in euro. Nessun costo per risposta.</h2>
+      <h2 class="h2 words">${words('Un canone fisso in euro. Nessun costo per risposta.')}</h2>
       <p class="section-lead">Prezzi IVA esclusa. 14 giorni di prova gratuita su ogni piano.</p>
       <div class="billing-toggle" role="group" aria-label="Periodo di fatturazione">
         <span class="billing-thumb" aria-hidden="true"></span>
@@ -280,8 +317,8 @@ export function landingPage(ctx, { demoWidgetId }) {
         <button type="button" data-billing="yearly" aria-pressed="false">Annuale <span class="save">2 mesi gratis</span></button>
       </div>
     </div>
-    <div class="pricing">
-      ${Object.values(PLANS).map((p, i) => html`<article class="plan${p.id === 'pro' ? ' plan-featured' : ''}" data-spot data-reveal style="--i:${i}">
+    <div class="pricing" data-scroll>
+      ${Object.values(PLANS).map((p, i) => html`<article class="plan${p.id === 'pro' ? ' plan-featured' : ''}" data-spot style="--o:${(i * 0.09).toFixed(2)}">
         ${p.id === 'pro' ? html`<span class="plan-tag">Consigliato</span>` : ''}
         <h3>${p.name}</h3>
         <p class="plan-who">${PLAN_COPY[p.id].who}</p>
@@ -299,7 +336,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   <div class="wrap faq-wrap">
     <div class="section-head" data-reveal>
       <p class="eyebrow">Domande frequenti</p>
-      <h2 class="h2">Quello che ci chiedono prima di iniziare.</h2>
+      <h2 class="h2 words">${words('Quello che ci chiedono prima di iniziare.')}</h2>
       <p class="section-lead">Non trovi la tua? Scrivila all’assistente in basso a destra, oppure a <a href="mailto:${config.brand.supportEmail}">${config.brand.supportEmail}</a>.</p>
     </div>
     <div class="faq" data-reveal style="--i:1">
@@ -308,9 +345,10 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section cta-final">
+<section class="section cta-final has-video" data-scroll>
+  ${sectionVideo('onde')}
   <div class="wrap center" data-reveal>
-    <h2 class="h2">Il tuo sito può rispondere già da stasera.</h2>
+    <h2 class="h2 words-scrub">${words('Il tuo sito può rispondere già da stasera.', { total: 7 })}</h2>
     <p class="section-lead">Crei l’assistente in pochi minuti. Se non ti convince, non paghi niente.</p>
     <div class="cta-actions">
       <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Crea il tuo assistente ${icon('arrow', 16)}</a>

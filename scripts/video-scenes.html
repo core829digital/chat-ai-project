@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Generatore video della landing</title>
+<style>body{margin:0;background:#222}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/*
+ * Scene video generate in codice per la landing (vedi docs/motion-design.md).
+ * Ogni scena è un ciclo perfetto: tutto il movimento è periodico sulla durata T,
+ * quindi l'ultimo fotogramma si collega al primo senza scatti.
+ * Uso: node scripts/render-videos.js (registra con MediaRecorder in Chrome).
+ */
+'use strict';
+var TAU = Math.PI * 2;
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+var GREEN = [31, 92, 74], LIVE = [63, 191, 127], INK = [26, 27, 24], TERRA = [168, 80, 42], SAND = [214, 196, 160], CREAM = [255, 244, 222];
+
+// ---------------- Flusso: fili di seta che ondeggiano (dietro "Come funziona") ----------------
+function makeFlusso(W, H) {
+  var r = rng(2240);
+  var threads = [];
+  for (var i = 0; i < 44; i++) {
+    var pick = r();
+    threads.push({
+      y0: H * (0.08 + 0.84 * (i / 43)) + (r() - 0.5) * 30,
+      a1: 18 + r() * 42, f1: 0.6 + r() * 1.2, k1: 1 + Math.floor(r() * 2), p1: r() * TAU,
+      a2: 6 + r() * 18, f2: 1.5 + r() * 2.5, k2: 1 + Math.floor(r() * 2), p2: r() * TAU,
+      col: pick < 0.12 ? TERRA : pick < 0.6 ? GREEN : INK,
+      alpha: 0.07 + r() * 0.16, width: 0.6 + r() * 1.4,
+      beads: [r(), r()], beadK: 1 + Math.floor(r() * 2),
+    });
+  }
+  function yAt(th, x, t) {
+    return th.y0 + th.a1 * Math.sin(TAU * (x / W) * th.f1 + TAU * th.k1 * t + th.p1)
+      + th.a2 * Math.sin(TAU * (x / W) * th.f2 - TAU * th.k2 * t + th.p2);
+  }
+  return function (ctx, t) {
+    var g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#efebe2'); g.addColorStop(1, '#ebe5d8');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < threads.length; i++) {
+      var th = threads[i];
+      ctx.strokeStyle = rgba(th.col, th.alpha);
+      ctx.lineWidth = th.width;
+      ctx.beginPath();
+      for (var x = -20; x <= W + 20; x += 8) {
+        var y = yAt(th, x, t);
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      for (var b = 0; b < th.beads.length; b++) {
+        var bx = ((th.beads[b] + th.beadK * t) % 1) * W;
+        var by = yAt(th, bx, t);
+        ctx.fillStyle = rgba(th.col === INK ? GREEN : th.col, Math.min(0.6, th.alpha * 3));
+        ctx.beginPath(); ctx.arc(bx, by, 2.2, 0, TAU); ctx.fill();
+      }
+    }
+  };
+}
+
+// ---------------- Rete: clienti collegati a una dashboard (dietro "Per agenzie") ----------------
+function makeRete(W, H) {
+  var r = rng(2241);
+  var hub = [W * 0.66, H * 0.5];
+  var nodes = [];
+  for (var i = 0; i < 24; i++) {
+    var ring = i % 2 ? 0.3 : 0.44;
+    nodes.push({
+      a: (i / 24) * TAU + r() * 0.2, rx: W * ring, ry: H * ring * 1.05,
+      wob: 0.04 + r() * 0.05, ph: r() * TAU, size: 2.5 + r() * 3,
+      n: 1 + Math.floor(r() * 3), off: r(), bend: (r() - 0.5) * 0.6,
+    });
+  }
+  var dust = [];
+  for (var d = 0; d < 90; d++) dust.push({ x: r() * W, y: r() * H, rad: 6 + r() * 26, ph: r() * TAU, s: 0.4 + r() * 1.1 });
+  function pos(n, t) {
+    var a = n.a + n.wob * Math.sin(TAU * t + n.ph);
+    return [hub[0] + Math.cos(a) * n.rx, hub[1] + Math.sin(a) * n.ry];
+  }
+  function ctrl(p, n) {
+    var mx = (p[0] + hub[0]) / 2, my = (p[1] + hub[1]) / 2;
+    return [mx - (hub[1] - p[1]) * n.bend, my + (hub[0] - p[0]) * n.bend];
+  }
+  function quad(p, c, q, u) {
+    var a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, e = u * u;
+    return [a * p[0] + b * c[0] + e * q[0], a * p[1] + b * c[1] + e * q[1]];
+  }
+  return function (ctx, t) {
+    var g = ctx.createRadialGradient(hub[0], hub[1], 0, hub[0], hub[1], W * 0.8);
+    g.addColorStop(0, '#1d3329'); g.addColorStop(1, '#101a16');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var d = 0; d < dust.length; d++) {
+      var s = dust[d];
+      var dx = s.x + s.rad * Math.cos(TAU * t + s.ph), dy = s.y + s.rad * Math.sin(TAU * t + s.ph);
+      ctx.fillStyle = 'rgba(255,244,222,' + (0.05 + 0.08 * (0.5 + 0.5 * Math.sin(TAU * 2 * t + s.ph))) + ')';
+      ctx.fillRect(dx, dy, s.s, s.s);
+    }
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var p = pos(n, t), c = ctrl(p, n);
+      ctx.strokeStyle = 'rgba(63,191,127,0.14)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.quadraticCurveTo(c[0], c[1], hub[0], hub[1]); ctx.stroke();
+      for (var k = 0; k < n.n; k++) {
+        var u = (n.off + k / n.n + t * n.n) % 1;
+        var q = quad(p, c, hub, u);
+        var a = Math.sin(u * Math.PI);
+        var glow = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 12);
+        glow.addColorStop(0, 'rgba(120,230,170,' + (0.55 * a) + ')');
+        glow.addColorStop(1, 'rgba(120,230,170,0)');
+        ctx.fillStyle = glow; ctx.fillRect(q[0] - 12, q[1] - 12, 24, 24);
+        ctx.fillStyle = 'rgba(210,255,230,' + (0.9 * a) + ')';
+        ctx.beginPath(); ctx.arc(q[0], q[1], 1.6, 0, TAU); ctx.fill();
+      }
+      var pulse = 0.6 + 0.4 * Math.sin(TAU * 2 * t + n.ph);
+      ctx.fillStyle = rgba(CREAM, 0.12 * pulse);
+      ctx.beginPath(); ctx.arc(p[0], p[1], n.size * 3, 0, TAU); ctx.fill();
+      ctx.fillStyle = rgba(CREAM, 0.85);
+      ctx.beginPath(); ctx.arc(p[0], p[1], n.size, 0, TAU); ctx.fill();
+    }
+    for (var w = 0; w < 3; w++) {
+      var f = (t + w / 3) % 1;
+      ctx.strokeStyle = 'rgba(63,191,127,' + (0.35 * (1 - f) * (1 - f)) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(hub[0], hub[1], 26 + f * 160, 0, TAU); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(63,191,127,0.8)'; ctx.lineWidth = 2;
+    for (var s2 = 0; s2 < 3; s2++) {
+      var a0 = TAU * t + (s2 * TAU) / 3;
+      ctx.beginPath(); ctx.arc(hub[0], hub[1], 34, a0, a0 + 1.1); ctx.stroke();
+    }
+    ctx.fillStyle = '#1f5c4a';
+    ctx.beginPath(); ctx.arc(hub[0], hub[1], 22, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#3fbf7f';
+    ctx.beginPath(); ctx.arc(hub[0], hub[1], 7, 0, TAU); ctx.fill();
+  };
+}
+
+// ---------------- Onde: un segnale che si propaga e messaggi che salgono (dietro la chiamata finale) ----------------
+function bubble(ctx, x, y, s, a) {
+  var w = 64 * s, h = 34 * s, rad = 12 * s;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(255,253,249,0.85)';
+  ctx.strokeStyle = 'rgba(31,92,74,0.45)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2 + rad, y - h / 2);
+  ctx.arcTo(x + w / 2, y - h / 2, x + w / 2, y + h / 2, rad);
+  ctx.arcTo(x + w / 2, y + h / 2, x - w / 2, y + h / 2, rad);
+  ctx.lineTo(x - w / 2 + 10 * s, y + h / 2);
+  ctx.lineTo(x - w / 2 + 2 * s, y + h / 2 + 8 * s);
+  ctx.lineTo(x - w / 2 + 4 * s, y + h / 2 - 1);
+  ctx.arcTo(x - w / 2, y + h / 2, x - w / 2, y - h / 2, rad * 0.4);
+  ctx.arcTo(x - w / 2, y - h / 2, x + w / 2, y - h / 2, rad);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(31,92,74,0.55)';
+  for (var i = -1; i <= 1; i++) { ctx.beginPath(); ctx.arc(x + i * 11 * s, y, 3 * s, 0, TAU); ctx.fill(); }
+  ctx.restore();
+}
+function makeOnde(W, H) {
+  var r = rng(2242);
+  var c = [W * 0.5, H * 0.58];
+  var bubbles = [];
+  for (var i = 0; i < 16; i++) bubbles.push({ x: W * (0.05 + 0.9 * r()), v: r(), s: 0.55 + r() * 0.6, ph: r() * TAU, sw: 10 + r() * 22 });
+  return function (ctx, t) {
+    var g = ctx.createRadialGradient(c[0], c[1], 0, c[0], c[1], W * 0.7);
+    g.addColorStop(0, '#e6efe9'); g.addColorStop(1, '#f6f4ef');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var w = 0; w < 7; w++) {
+      var f = (t + w / 7) % 1;
+      ctx.strokeStyle = 'rgba(31,92,74,' + (0.28 * (1 - f) * (1 - f)) + ')';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.ellipse(c[0], c[1], 30 + f * W * 0.55, 18 + f * H * 0.5, 0, 0, TAU); ctx.stroke();
+    }
+    for (var i = 0; i < bubbles.length; i++) {
+      var b = bubbles[i];
+      var u = (b.v + t) % 1;
+      var y = H + 60 - u * (H + 120);
+      var x = b.x + b.sw * Math.sin(TAU * 2 * t + b.ph);
+      var a = Math.sin(u * Math.PI) * 0.9;
+      bubble(ctx, x, y, b.s, a);
+    }
+  };
+}
+
+// ---------------- Aurora: luci morbide che respirano (dietro la dichiarazione) ----------------
+function makeAurora(W, H) {
+  var r = rng(2243);
+  var blobs = [];
+  var cols = [GREEN, LIVE, TERRA, SAND, GREEN];
+  for (var i = 0; i < 7; i++) {
+    blobs.push({ cx: W * (0.1 + 0.8 * r()), cy: H * (0.15 + 0.7 * r()), R: W * (0.18 + r() * 0.2),
+      ox: W * (0.05 + r() * 0.12), oy: H * (0.05 + r() * 0.15), ph: r() * TAU, k: 1 + Math.floor(r() * 2), col: cols[i % cols.length], a: 0.1 + r() * 0.12 });
+  }
+  return function (ctx, t) {
+    ctx.fillStyle = '#f6f4ef'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'multiply';
+    for (var i = 0; i < blobs.length; i++) {
+      var b = blobs[i];
+      var x = b.cx + b.ox * Math.cos(TAU * b.k * t + b.ph), y = b.cy + b.oy * Math.sin(TAU * b.k * t + b.ph);
+      var g = ctx.createRadialGradient(x, y, 0, x, y, b.R);
+      g.addColorStop(0, rgba(b.col, b.a));
+      g.addColorStop(1, rgba(b.col, 0));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  };
+}
+
+var SCENES = { flusso: makeFlusso, rete: makeRete, onde: makeOnde, aurora: makeAurora };
+
+window.renderScene = function (name, opts) {
+  var W = opts.width, H = opts.height, T = opts.duration * 1000, fps = opts.fps || 30;
+  var canvas = document.getElementById('c');
+  canvas.width = W; canvas.height = H;
+  var ctx = canvas.getContext('2d');
+  var draw = SCENES[name](W, H);
+  draw(ctx, 0);
+  var poster = canvas.toDataURL('image/jpeg', 0.82);
+  var stream = canvas.captureStream(fps);
+  var rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: opts.bitrate || 1100000 });
+  var chunks = [];
+  rec.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+  return new Promise(function (resolve, reject) {
+    rec.onstop = function () {
+      var blob = new Blob(chunks, { type: 'video/webm' });
+      var fr = new FileReader();
+      fr.onload = function () { resolve({ webm: fr.result.split(',')[1], poster: poster.split(',')[1], bytes: blob.size }); };
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    };
+    rec.start();
+    var t0 = performance.now();
+    var timer = setInterval(function () {
+      var el = performance.now() - t0;
+      if (el >= T) { clearInterval(timer); draw(ctx, 0); setTimeout(function () { rec.stop(); }, 60); return; }
+      draw(ctx, el / T);
+    }, 1000 / fps);
+  });
+};
+</script>
+</body>
+</html>

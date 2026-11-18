@@ -63,6 +63,7 @@ export function publicLayout(ctx, { title, description, body, bodyClass = '', sc
   <div class="wrap header-inner">
     <a href="/" class="brand" aria-label="${config.brand.name}, pagina iniziale">${logo()}</a>
     <nav class="nav" aria-label="Principale">
+      <span class="nav-ink" aria-hidden="true"></span>
       <a href="/#come-funziona">Come funziona</a>
       <a href="/#settori">Settori</a>
       <a href="/#agenzie">Per agenzie</a>

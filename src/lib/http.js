@@ -142,10 +142,14 @@ const MIME = {
   '.php': 'text/plain; charset=utf-8',
   '.zip': 'application/zip',
   '.woff2': 'font/woff2',
+  '.webm': 'video/webm',
+  '.mp4': 'video/mp4',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.html': 'text/html; charset=utf-8',
 };
 
-export function serveFile(res, baseDir, relPath, { cors = false, maxAge = 300 } = {}) {
+export function serveFile(res, baseDir, relPath, { cors = false, maxAge = 300, req = null } = {}) {
   const resolved = path.resolve(baseDir, '.' + path.posix.normalize('/' + relPath));
   if (!resolved.startsWith(path.resolve(baseDir) + path.sep)) return false;
   let stat;
@@ -155,15 +159,35 @@ export function serveFile(res, baseDir, relPath, { cors = false, maxAge = 300 } 
     return false;
   }
   if (!stat.isFile()) return false;
-  res.statusCode = 200;
   res.setHeader('Content-Type', MIME[path.extname(resolved)] || 'application/octet-stream');
-  res.setHeader('Content-Length', stat.size);
   res.setHeader('Cache-Control', config.production ? `public, max-age=${maxAge}` : 'no-cache');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Accept-Ranges', 'bytes');
   if (cors) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   }
+  // Richieste parziali (Range): servono ai browser per i video, soprattutto Safari.
+  const range = req && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : stat.size - Number(range[2]);
+    let end = range[1] && range[2] ? Number(range[2]) : stat.size - 1;
+    start = Math.max(0, start);
+    end = Math.min(end, stat.size - 1);
+    if (start > end) {
+      res.statusCode = 416;
+      res.setHeader('Content-Range', `bytes */${stat.size}`);
+      res.end();
+      return true;
+    }
+    res.statusCode = 206;
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+    res.setHeader('Content-Length', end - start + 1);
+    fs.createReadStream(resolved, { start, end }).pipe(res);
+    return true;
+  }
+  res.statusCode = 200;
+  res.setHeader('Content-Length', stat.size);
   fs.createReadStream(resolved).pipe(res);
   return true;
 }

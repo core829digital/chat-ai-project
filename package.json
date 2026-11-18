@@ -12,6 +12,7 @@
     "dev": "node --watch src/server.js",
     "seed": "node scripts/seed.js",
     "test": "node --test test/",
-    "e2e": "node scripts/e2e.js"
+    "e2e": "node scripts/e2e.js",
+    "videos": "node scripts/render-videos.js"
   }
 }

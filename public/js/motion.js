@@ -8,6 +8,7 @@
 (function () {
   'use strict';
 
+  var root = document.documentElement;
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var finePointer = window.matchMedia('(pointer: fine)').matches;
   var SEED = 2240;
@@ -481,6 +482,139 @@
       });
       btn.addEventListener('pointerleave', function () { btn.style.translate = ''; });
     });
+  }
+
+  // =====================================================================
+  // 4. Motore di scroll: ogni [data-scroll] riceve tre avanzamenti continui
+  //    --pe  entrata  (0 quando il bordo alto tocca il fondo dello schermo, 1 quando arriva al 15% dall'alto)
+  //    --p   passaggio (0 entra dal basso, 1 esce dall'alto)
+  //    --px  uscita   (0 finché il bordo alto è sotto la testata, 1 quando è uscito di tutta la sua altezza)
+  //    Il CSS li usa direttamente: gli effetti seguono lo scroll e si riavvolgono tornando su.
+  // =====================================================================
+  var scrollEls = Array.prototype.slice.call(document.querySelectorAll('[data-scroll]'));
+  var handlers = {
+    steps: function (el, pe) {
+      var items = el.children;
+      for (var i = 0; i < items.length; i++) items[i].classList.toggle('is-on', pe > 0.32 + i * 0.2);
+    },
+    type: function (el, pe) {
+      var code = el.querySelector('[data-type]');
+      if (!code) return;
+      if (!code._full) code._full = code.textContent;
+      var n = Math.round(code._full.length * clamp((pe - 0.2) / 0.55, 0, 1));
+      if (code._n === n) return;
+      code._n = n;
+      code.textContent = code._full.slice(0, n);
+      el.classList.toggle('is-typed', n >= code._full.length);
+    },
+  };
+
+  if (scrollEls.length && !reduceMotion) {
+    root.classList.add('motion-on');
+    var activeEls = new Set();
+    var seen = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) activeEls.add(e.target); else activeEls.delete(e.target); });
+    }, { rootMargin: '30% 0px 30% 0px' });
+    scrollEls.forEach(function (el) { seen.observe(el); });
+
+    var marqueeEl = document.querySelector('[data-scroll="marquee"]');
+    var track = marqueeEl && marqueeEl.querySelector('.marquee');
+    var lastY = window.scrollY, lastT = 0, velocity = 0, shift = 0;
+
+    var measureEl = function (el, vh) {
+      var r = el.getBoundingClientRect();
+      var p = clamp((vh - r.top) / (vh + r.height), 0, 1);
+      var pe = clamp((vh - r.top) / (vh * 0.85), 0, 1);
+      var px = clamp(-r.top / Math.max(1, r.height), 0, 1);
+      // --pp: avanzamento mentre la sezione è fissata (sticky) — 0 quando si fissa, 1 quando si sblocca
+      var pp = clamp(-r.top / Math.max(1, r.height - vh), 0, 1);
+      var key = (p * 1000 | 0) + ':' + (pe * 1000 | 0) + ':' + (px * 1000 | 0) + ':' + (pp * 1000 | 0);
+      if (el._key === key) return;
+      el._key = key;
+      el.style.setProperty('--p', p.toFixed(4));
+      el.style.setProperty('--pe', pe.toFixed(4));
+      el.style.setProperty('--px', px.toFixed(4));
+      el.style.setProperty('--pp', pp.toFixed(4));
+      var h = handlers[el.getAttribute('data-scroll')];
+      if (h) h(el, pe, p, px);
+    };
+    // prima misura immediata, così niente "salta" al primo fotogramma
+    scrollEls.forEach(function (el) { measureEl(el, window.innerHeight); });
+
+    tasks.push(function (t) {
+      var vh = window.innerHeight;
+      activeEls.forEach(function (el) { measureEl(el, vh); });
+
+      // velocità di scroll levigata: guida inclinazione e spinta della fascia piattaforme
+      var y = window.scrollY;
+      var dt = lastT ? Math.min(64, t - lastT) : 16;
+      lastT = t;
+      var v = (y - lastY) / dt * 16;
+      lastY = y;
+      velocity += (v - velocity) * 0.1;
+      if (track && activeEls.has(marqueeEl)) {
+        shift += velocity * 0.9;
+        var w = track.scrollWidth / 2 || 1;
+        var off = ((shift % w) + w) % w;
+        track.style.setProperty('--shift', (-off).toFixed(1) + 'px');
+        track.style.setProperty('--skew', clamp(velocity * -0.18, -9, 9).toFixed(2) + 'deg');
+      }
+    });
+  } else {
+    // senza animazioni: stato finale, tutto visibile
+    document.querySelectorAll('[data-scroll="steps"] > *').forEach(function (s) { s.classList.add('is-on'); });
+  }
+
+  // =====================================================================
+  // 5. Video di sezione: caricati solo quando stanno per comparire, in pausa fuori schermo
+  // =====================================================================
+  var videos = document.querySelectorAll('video[data-src]');
+  if (videos.length && 'IntersectionObserver' in window) {
+    var vo = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var v = e.target;
+        if (e.isIntersecting) {
+          if (reduceMotion) return; // resta l'immagine fissa
+          if (!v.src) { v.src = v.getAttribute('data-src'); v.load(); }
+          var play = v.play();
+          if (play && play.catch) play.catch(function () { /* autoplay bloccato: resta il poster */ });
+          v.parentNode.classList.add('is-playing');
+        } else if (v.src) {
+          v.pause();
+        }
+      });
+    }, { rootMargin: '20% 0px 20% 0px' });
+    videos.forEach(function (v) { vo.observe(v); });
+  }
+
+  // =====================================================================
+  // 6. Menu che segue lo scroll: evidenzia la sezione in cui ci si trova
+  // =====================================================================
+  var nav = document.querySelector('.nav');
+  var ink = nav && nav.querySelector('.nav-ink');
+  if (ink && document.querySelector('.landing')) {
+    var links = Array.prototype.slice.call(nav.querySelectorAll('a[href^="/#"]'));
+    var byId = {};
+    links.forEach(function (a) {
+      var target = document.getElementById(a.getAttribute('href').slice(2));
+      if (target) byId[target.id] = a;
+    });
+    var moveInk = function (a) {
+      links.forEach(function (l) { l.classList.toggle('is-current', l === a); });
+      if (!a) { ink.style.opacity = '0'; return; }
+      ink.style.opacity = '1';
+      ink.style.width = a.offsetWidth + 'px';
+      ink.style.transform = 'translateX(' + a.offsetLeft + 'px)';
+    };
+    var current = null;
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) current = e.target.id;
+        else if (current === e.target.id) current = null;
+      });
+      moveInk(current ? byId[current] : null);
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    Object.keys(byId).forEach(function (sid) { spy.observe(document.getElementById(sid)); });
   }
 
   if (tasks.length) start();
