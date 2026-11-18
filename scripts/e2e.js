@@ -299,6 +299,48 @@ try {
   await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'demo studio medico completa', 9000);
   check((await evaluate(`document.querySelector('[data-demo-tab=sanita]').getAttribute('aria-selected')`)) === 'true', 'demo hero: scheda settore selezionata e accessibile');
   await shot('11b-landing-hero-studio');
+  check(await evaluate(`(() => { const col = document.querySelector('.hero-copy').getBoundingClientRect();
+    const r = document.createRange(); r.selectNodeContents(document.querySelector('.display'));
+    return [...r.getClientRects()].every(b => b.right <= col.right + 1); })()`), 'hero: il titolo resta nella sua colonna (va a capo, non finisce sotto la demo)');
+  // campo generativo dell'hero: il canvas disegna davvero qualcosa
+  check(await evaluate(`(() => { const c = document.querySelector('[data-field=hero]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0; for (let i = 3; i < d.length; i += 64) if (d[i] > 0) n++; return n > 50; })()`), 'hero: campo generativo disegnato');
+
+  // racconto a scroll "Una notte": lo stato segue la posizione di scroll, avanti e indietro
+  const storyAt = (p) => evaluate(`(async () => {
+    const s = document.querySelector('[data-story]');
+    const top = s.getBoundingClientRect().top + scrollY;
+    scrollTo({ top: top + (s.offsetHeight - innerHeight) * ${p}, behavior: 'instant' });
+    await new Promise(r => setTimeout(r, 900));
+    const c = document.querySelector('[data-field=sky]');
+    const px = c.getContext('2d').getImageData(4, 4, 1, 1).data;
+    return { clock: document.querySelector('[data-clock]').textContent,
+      day: document.querySelector('.story-sticky').classList.contains('is-day'),
+      chapter: [...document.querySelectorAll('[data-chapter]')].findIndex(l => l.classList.contains('is-active')),
+      msgs: document.querySelectorAll('.sb-msg.is-on').length, lead: !!document.querySelector('.sb-lead.is-on'),
+      notes: document.querySelectorAll('.sp-note.is-on').length, answered: document.querySelector('[data-answered]').textContent,
+      sky: px[0] + px[1] + px[2] };
+  })()`);
+  const s0 = await storyAt(0.02);
+  check(s0.clock === '22:40' && s0.chapter === 0 && s0.msgs === 0 && !s0.day, `storia, inizio: 22:40, notte, nessun messaggio (${JSON.stringify(s0)})`);
+  await shot('14-storia-notte');
+  const s1 = await storyAt(0.3);
+  check(s1.chapter === 1 && s1.msgs >= 2 && !s1.lead, `storia, risposta: capitolo 2 e risposta visibile (${s1.msgs} messaggi)`);
+  await shot('15-storia-risposta');
+  const s2 = await storyAt(0.55);
+  check(s2.chapter === 2 && s2.lead, 'storia, contatto: modulo compilato visibile');
+  await shot('16-storia-contatto');
+  const s3 = await storyAt(0.99);
+  check(s3.day && s3.clock === '08:30' && s3.chapter === 3 && s3.notes === 3 && s3.answered === '27', `storia, mattino: 08:30, giorno, 3 notifiche, 27 risposte (${JSON.stringify(s3)})`);
+  check(s3.sky > s0.sky + 300, `storia: il cielo passa dalla notte al giorno (luminosità ${s0.sky} → ${s3.sky})`);
+  check(await evaluate(`(() => { const a = document.querySelector('.story-phone').getBoundingClientRect();
+    const b = document.querySelector('.sb-chat').getBoundingClientRect();
+    return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top; })()`), 'storia: il telefono non copre la chat');
+  check(await evaluate(`[...document.querySelectorAll('.sb-msg.is-on')].every(m => m.scrollHeight <= m.clientHeight + 1)`), 'storia: nessun messaggio schiacciato o tagliato');
+  await shot('17-storia-mattino');
+  const back = await storyAt(0.3);
+  check(!back.day && back.notes === 0 && back.chapter === 1, 'storia: tornando indietro con lo scroll la notte si riavvolge');
+
   // scorre la pagina come un visitatore, così le sezioni animate compaiono
   await evaluate(`(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); } })()`);
   await sleep(1600);
@@ -321,6 +363,16 @@ try {
   await sleep(700);
   check(await evaluate(noOverlap), 'demo hero: la notifica non copre la chat (mobile)');
   await shot('13b-landing-mobile-hero');
+  const m1 = await storyAt(0.3);
+  check(m1.chapter === 1 && m1.msgs >= 2, 'storia su mobile: funziona anche sul telefono');
+  check(await evaluate(`(() => { const a = document.querySelector('.story-counter').getBoundingClientRect();
+    const b = document.querySelector('.sb-chat').getBoundingClientRect();
+    return (a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top) && a.bottom <= innerHeight; })()`), 'storia su mobile: il contatore non copre la chat ed è visibile');
+  await shot('13c-storia-mobile-notte');
+  await storyAt(0.99);
+  await shot('13d-storia-mobile-mattino');
+  await evaluate(`scrollTo({ top: 0, behavior: 'instant' })`);
+  await sleep(500);
   await shot('13-landing-mobile', { full: true });
   await checkFitsPhone('landing mobile');
 

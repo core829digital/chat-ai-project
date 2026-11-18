@@ -57,6 +57,8 @@ src/
   routes/            public, app (cliente), admin, api (widget)
   views/             pagine HTML
 public/widget/w.js   il widget (Shadow DOM, nessuna dipendenza)
+public/js/motion.js  motion design della landing (campo generativo, racconto a scroll)
+docs/               note di progetto (motion-design.md)
 wordpress-plugin/    plugin WordPress
 scripts/             seed ed e2e
 test/                test automatici

@@ -59,6 +59,7 @@ export function publicLayout(ctx, { title, description, body, bodyClass = '', sc
 <body class="${bodyClass}">
 <a class="skip" href="#main">Vai al contenuto</a>
 <header class="site-header">
+  <span class="scroll-progress" aria-hidden="true"></span>
   <div class="wrap header-inner">
     <a href="/" class="brand" aria-label="${config.brand.name}, pagina iniziale">${logo()}</a>
     <nav class="nav" aria-label="Principale">

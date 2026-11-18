@@ -70,7 +70,7 @@ const DEMOS = [
 const PLATFORMS = ['WordPress', 'Wix', 'Shopify', 'Joomla', 'Squarespace', 'PrestaShop', 'Drupal', 'Webflow', 'HTML e PHP'];
 
 const step = (n, title, text, visual) => html`<li class="step" data-reveal style="--i:${n}">
-  <div class="step-visual" aria-hidden="true">${visual}</div>
+  <div class="step-visual" aria-hidden="true" data-spot>${visual}</div>
   <span class="step-n">${n}</span>
   <h3>${title}</h3>
   <p>${text}</p>
@@ -82,13 +82,14 @@ export function landingPage(ctx, { demoWidgetId }) {
   const body = html`
 <section class="hero">
   <div class="hero-glow" aria-hidden="true"></div>
+  <canvas class="hero-field" data-field="hero" aria-hidden="true"></canvas>
   <div class="wrap hero-grid">
     <div class="hero-copy">
       <p class="pill" style="--i:0"><span class="live-dot" aria-hidden="true"></span>Risponde 24 ore su 24, anche la domenica</p>
       <h1 class="display" style="--i:1">Il tuo sito risponde ai clienti. <span class="hl">Anche alle undici di sera.</span></h1>
       <p class="lead" style="--i:2">Un assistente che conosce orari, prezzi e servizi della tua attività. Risponde ai visitatori in pochi secondi e ti passa i contatti di chi vuole parlarti.</p>
       <div class="hero-actions" style="--i:3">
-        <a class="btn btn-primary btn-lg" href="/registrati">Prova gratis per 14 giorni ${icon('arrow', 16)}</a>
+        <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Prova gratis per 14 giorni ${icon('arrow', 16)}</a>
         ${demoWidgetId ? html`<button class="btn btn-ghost btn-lg" type="button" data-open-demo>Fagli una domanda</button>` : ''}
       </div>
       <ul class="hero-ticks" style="--i:4">
@@ -102,7 +103,7 @@ export function landingPage(ctx, { demoWidgetId }) {
       <div class="demo-tabs" role="tablist" aria-label="Scegli un settore per vedere un esempio">
         ${DEMOS.map((d, i) => html`<button type="button" role="tab" class="demo-tab${i === 0 ? ' is-active' : ''}" aria-selected="${i === 0 ? 'true' : 'false'}" data-demo-tab="${d.id}">${d.tab}<span class="demo-tab-bar" aria-hidden="true"></span></button>`)}
       </div>
-      <div class="browser" aria-hidden="true">
+      <div class="browser" aria-hidden="true" data-tilt>
         <div class="browser-bar"><span></span><span></span><span></span><div class="browser-url" data-demo-site>${first.site}</div></div>
         <div class="browser-page">
           <div class="mock-nav"><b data-demo-name>${first.name}</b><i></i><i></i><i></i></div>
@@ -139,29 +140,47 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section" id="perche">
-  <div class="wrap">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow">Cosa cambia</p>
-      <h2 class="h2">Stessa domanda, alle 22:40. Due finali diversi.</h2>
-    </div>
-    <div class="compare">
-      <article class="compare-card compare-before" data-reveal style="--i:1">
-        <h3>Senza assistente</h3>
-        <ol class="timeline">
-          <li><time>22:40</time><span>Un cliente chiede se c’è posto sabato.</span></li>
-          <li><time>22:41</time><span>Nessuno risponde. Il modulo contatti promette “entro 24 ore”.</span></li>
-          <li class="is-bad"><time>22:46</time><span>Prenota da un’altra parte.</span></li>
+<section class="story" id="una-notte" data-story aria-labelledby="story-title">
+  <div class="story-sticky">
+    <canvas class="story-sky" data-field="sky" aria-hidden="true"></canvas>
+    <div class="wrap story-grid">
+      <div class="story-copy">
+        <p class="eyebrow story-eyebrow">Una notte qualsiasi, al tuo sito</p>
+        <h2 id="story-title" class="story-clock"><span class="sr-only">Dalle 22:40 alle 8:30: </span><span data-clock aria-hidden="true">22:40</span></h2>
+        <ol class="story-chapters">
+          <li data-chapter="0" class="is-active"><h3>Il negozio è chiuso. Il sito no.</h3><p>Una cliente scrive dal divano: vuole sapere se c’è una camera libera sabato.</p></li>
+          <li data-chapter="1"><h3>Risposta in due secondi.</h3><p>L’assistente risponde con i tuoi prezzi e le tue condizioni. Niente invenzioni: solo quello che hai scritto tu.</p></li>
+          <li data-chapter="2"><h3>Il contatto resta a te.</h3><p>Quando serve una persona, raccoglie nome e telefono, con il consenso a essere ricontattata.</p></li>
+          <li data-chapter="3"><h3>Alle 8:30 trovi la lista.</h3><p>Mentre dormivi ha risposto a 27 domande. Tre persone aspettano la tua chiamata.</p></li>
         </ol>
-      </article>
-      <article class="compare-card compare-after" data-reveal style="--i:2">
-        <h3>Con ${brand}</h3>
-        <ol class="timeline">
-          <li><time>22:40</time><span>Un cliente chiede se c’è posto sabato.</span></li>
-          <li><time>22:40</time><span>Riceve subito orari, prezzi e condizioni.</span></li>
-          <li class="is-good"><time>22:41</time><span>Lascia il numero. Domattina lo richiami tu.</span></li>
-        </ol>
-      </article>
+        <div class="story-progress" aria-hidden="true"><i><span></span></i><i><span></span></i><i><span></span></i><i><span></span></i></div>
+      </div>
+      <div class="story-visual" aria-hidden="true">
+        <div class="story-browser">
+          <div class="sb-bar"><span></span><span></span><span></span><div class="sb-url">locandalemura.it/camere</div></div>
+          <div class="sb-chat">
+            <div class="sb-head"><span class="chat-avatar">LM</span><div><b>Locanda Le Mura</b><small><span class="online"></span>Risponde in pochi secondi</small></div></div>
+            <div class="sb-log">
+              <p class="sb-msg sb-visitor" data-at="0.08">Avete una camera libera sabato? Siamo in due.</p>
+              <p class="sb-msg sb-typing" data-from="0.15" data-to="0.24"><i></i><i></i><i></i></p>
+              <p class="sb-msg sb-bot" data-at="0.24">Sabato abbiamo ancora due camere doppie: 95 € a notte, colazione inclusa. Vuoi che la reception ti confermi la prenotazione?</p>
+              <p class="sb-msg sb-visitor" data-at="0.36">Sì, grazie!</p>
+              <p class="sb-msg sb-bot" data-at="0.43">Perfetto. Mi lasci nome e telefono?</p>
+              <div class="sb-msg sb-lead" data-at="0.5"><b>Chiara M.</b><span>+39 347 ••• ••45</span><em>${icon('check', 13)} Consenso a essere ricontattata</em></div>
+              <p class="sb-msg sb-bot" data-at="0.57">Grazie Chiara! Domattina la reception ti chiama.</p>
+            </div>
+          </div>
+        </div>
+        <div class="story-phone">
+          <div class="sp-notch"></div>
+          <div class="sp-time">08:30</div>
+          <div class="sp-date">Domenica</div>
+          <div class="sp-note" data-at="0.76"><span class="notify-icon">${icon('inbox', 15)}</span><div><b>Nuovo contatto</b><span>Chiara M. · camera per sabato</span></div></div>
+          <div class="sp-note" data-at="0.82"><span class="notify-icon">${icon('inbox', 15)}</span><div><b>Nuovo contatto</b><span>Paolo G. · gruppo di 8 a maggio</span></div></div>
+          <div class="sp-note" data-at="0.88"><span class="notify-icon">${icon('inbox', 15)}</span><div><b>Nuovo contatto</b><span>Anna R. · animali ammessi?</span></div></div>
+        </div>
+        <div class="story-counter"><b data-answered>0</b><span>domande risposte stanotte</span></div>
+      </div>
     </div>
   </div>
 </section>
@@ -189,9 +208,9 @@ export function landingPage(ctx, { demoWidgetId }) {
       <pre><code>${snippet()}</code></pre>
     </div>
     <div class="cols-3 install-modes">
-      <article class="card" data-reveal style="--i:1"><h3>Una riga di codice</h3><p>Su qualsiasi sito. Il widget è isolato: non cambia la grafica del sito e non la subisce.</p></article>
-      <article class="card" data-reveal style="--i:2"><h3>Plugin WordPress</h3><p>Installi il plugin, incolli il codice del tuo assistente nelle impostazioni. Fine.</p></article>
-      <article class="card" data-reveal style="--i:3"><h3>Pagina chat ospitata</h3><p>Un indirizzo pronto per un pulsante, un QR code sul bancone o la firma email.</p></article>
+      <article class="card" data-spot data-reveal style="--i:1"><h3>Una riga di codice</h3><p>Su qualsiasi sito. Il widget è isolato: non cambia la grafica del sito e non la subisce.</p></article>
+      <article class="card" data-spot data-reveal style="--i:2"><h3>Plugin WordPress</h3><p>Installi il plugin, incolli il codice del tuo assistente nelle impostazioni. Fine.</p></article>
+      <article class="card" data-spot data-reveal style="--i:3"><h3>Pagina chat ospitata</h3><p>Un indirizzo pronto per un pulsante, un QR code sul bancone o la firma email.</p></article>
     </div>
   </div>
 </section>
@@ -204,11 +223,11 @@ export function landingPage(ctx, { demoWidgetId }) {
       <p class="section-lead">Ogni modello contiene le domande che i clienti di quel settore fanno davvero. Tu cambi solo i dettagli.</p>
     </div>
     <div class="sector-grid">
-      ${sectors.map(([, s], i) => html`<article class="sector" data-reveal style="--i:${i}">
+      ${sectors.map(([, s], i) => html`<article class="sector" data-spot data-reveal style="--i:${i}">
         <h3>${s.label}</h3>
         <ul>${s.faq.slice(0, 3).map(([q]) => html`<li>${q}</li>`)}</ul>
       </article>`)}
-      <article class="sector sector-other" data-reveal style="--i:${sectors.length}">
+      <article class="sector sector-other" data-spot data-reveal style="--i:${sectors.length}">
         <h3>Il tuo settore non c’è?</h3>
         <p>Parti dal modello generico con orari, indirizzo, contatti, prezzi e pagamenti, e aggiungi le tue domande. Con il servizio di configurazione lo prepariamo noi.</p>
       </article>
@@ -262,7 +281,7 @@ export function landingPage(ctx, { demoWidgetId }) {
       </div>
     </div>
     <div class="pricing">
-      ${Object.values(PLANS).map((p, i) => html`<article class="plan${p.id === 'pro' ? ' plan-featured' : ''}" data-reveal style="--i:${i}">
+      ${Object.values(PLANS).map((p, i) => html`<article class="plan${p.id === 'pro' ? ' plan-featured' : ''}" data-spot data-reveal style="--i:${i}">
         ${p.id === 'pro' ? html`<span class="plan-tag">Consigliato</span>` : ''}
         <h3>${p.name}</h3>
         <p class="plan-who">${PLAN_COPY[p.id].who}</p>
@@ -294,7 +313,7 @@ export function landingPage(ctx, { demoWidgetId }) {
     <h2 class="h2">Il tuo sito può rispondere già da stasera.</h2>
     <p class="section-lead">Crei l’assistente in pochi minuti. Se non ti convince, non paghi niente.</p>
     <div class="cta-actions">
-      <a class="btn btn-primary btn-lg" href="/registrati">Crea il tuo assistente ${icon('arrow', 16)}</a>
+      <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Crea il tuo assistente ${icon('arrow', 16)}</a>
     </div>
   </div>
 </section>`;
@@ -303,7 +322,7 @@ export function landingPage(ctx, { demoWidgetId }) {
     description: 'L’assistente per il sito della tua attività: risponde ai clienti 24 ore su 24, raccoglie i contatti e si installa con una riga di codice. Dati in UE.',
     body,
     bodyClass: 'landing',
-    scripts: html`<script src="/static/js/site.js" defer></script>${demoWidgetId ? html`<script src="/w.js" data-id="${demoWidgetId}" async></script>` : ''}`,
+    scripts: html`<script src="/static/js/site.js" defer></script><script src="/static/js/motion.js" defer></script>${demoWidgetId ? html`<script src="/w.js" data-id="${demoWidgetId}" async></script>` : ''}`,
   });
 }
 
