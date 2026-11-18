@@ -67,6 +67,22 @@ test/                test automatici
 ## Collegare l'AI (prossimo passo)
 Tutte le risposte passano da `respond()` in `src/lib/responder.js`. Basta aggiungere una funzione che chiama il modello con le risposte del cliente come contesto e restituisce lo stesso oggetto (`text`, `outcome`, `action`, `suggestions`): widget, dashboard, statistiche e limiti dei piani funzionano già.
 
+## Pubblicazione su Vercel (deploy automatico da GitHub)
+
+Il progetto è pronto per Vercel: `vercel.json` manda tutte le richieste alla funzione `api/index.js`, che usa la stessa applicazione del server locale. Non serve alcun comando di build.
+
+**Collegamento (una volta sola, dal sito di Vercel):**
+1. vercel.com → **Add New… → Project** → importa il repository `core829digital/chat-ai-project`.
+2. Framework Preset: **Other**. Lascia vuoti Build Command e Install Command.
+3. In **Environment Variables** aggiungi:
+   - `ADMIN_EMAIL` — email dell'amministratore
+   - `ADMIN_PASSWORD` — password dell'amministratore (almeno 12 caratteri; senza questa variabile l'admin non viene creato)
+   - `SEED_SAMPLE_CLIENTS` — `1` solo se vuoi i clienti di esempio (hanno password pubbliche nel repository: non usarlo su un sito aperto)
+   - `BASE_URL` — facoltativa, solo con un dominio personalizzato (es. `https://www.tuodominio.it`)
+4. **Deploy**. Da quel momento ogni `git push` su `main` pubblica in produzione e ogni altro branch crea un'anteprima.
+
+**Limite importante:** su Vercel il database SQLite sta in `/tmp`, che si svuota quando Vercel ricrea l'istanza (dopo qualche minuto di inattività o a ogni deploy). Landing, demo, accesso admin e dashboard funzionano, ma registrazioni, assistenti creati e conversazioni **non restano salvati**. Va bene per mostrare il prodotto; per i clienti veri serve un database esterno (es. PostgreSQL su Supabase o Neon, regione UE): tutte le query sono in `src/models.js`.
+
 ## Prima della messa online
 - `NODE_ENV=production`, `BASE_URL=https://dominio-definitivo`, server in UE dietro HTTPS.
 - Pagamenti (Stripe) e invio email (inviti, notifica nuovi contatti, recupero password) non sono ancora collegati: oggi il cambio piano lo fa l'admin e i link di invito si copiano o si inviano con l'email preparata.
