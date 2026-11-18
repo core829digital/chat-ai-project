@@ -1,0 +1,17 @@
+{
+  "name": "sportello",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sportello — assistente per siti web installabile con una riga di codice. MVP senza AI collegata.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test test/",
+    "e2e": "node scripts/e2e.js"
+  }
+}
