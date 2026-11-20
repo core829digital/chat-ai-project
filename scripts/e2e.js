@@ -388,16 +388,17 @@ try {
   await placeAt('.steps', 0.97);
   check((await evaluate(`document.querySelectorAll('.steps > .is-on').length`)) === 0, 'come funziona: tornando su i passaggi si spengono di nuovo');
 
+  // agenzie: la sezione si apre dal centro con bordi sfumati (maschera ellittica) mentre il contenuto sale
+  const agencyLift = `parseFloat(getComputedStyle(document.querySelector('#agenzie > .wrap')).translate.split(' ')[1] || '0')`;
   await placeAt('#agenzie', 0.85);
-  const clipStart = await evaluate(`getComputedStyle(document.querySelector('#agenzie')).clipPath`);
-  check(/inset\((?!0px 0px)/.test(clipStart) && /round/.test(clipStart), `agenzie: entra come una scheda con bordi arrotondati (${clipStart.slice(0, 40)})`);
+  const maskStart = await evaluate(`getComputedStyle(document.querySelector('#agenzie')).maskImage`);
+  const liftStart = await evaluate(agencyLift);
+  check(/radial-gradient/.test(maskStart) && liftStart > 10, `agenzie: entra con un'apertura sfumata dal centro (contenuto ancora ${Math.round(liftStart)}px più in basso)`);
   await placeAt('#agenzie', 0.45);
   await shot('20-agenzie-apertura');
   await placeAt('#agenzie', 0.02);
-  const clipEnd = await evaluate(`getComputedStyle(document.querySelector('#agenzie')).clipPath`);
-  // a fine apertura il ritaglio è nullo: il browser può scriverlo come 0px, 0% o "none"
-  const clipNums = (clipEnd.match(/-?\d*\.?\d+/g) || []).map(Number);
-  check(clipEnd === 'none' || clipNums.every((n) => Math.abs(n) < 0.01), `agenzie: si apre fino a occupare tutta la larghezza (${clipEnd})`);
+  const liftEnd = await evaluate(agencyLift);
+  check(liftEnd < 0.5, `agenzie: apertura completa, contenuto al suo posto (${liftEnd.toFixed(2)}px)`);
   await sleep(1500);
   check(await evaluate(`(() => { const v = document.querySelector('#agenzie video'); return !!v.currentSrc && !v.paused && v.readyState >= 2; })()`), 'agenzie: il video di sfondo è caricato e in riproduzione');
   await shot('21-agenzie-video');
@@ -455,6 +456,17 @@ try {
   await shot('13c-storia-mobile-notte');
   await storyAt(0.99);
   await shot('13d-storia-mobile-mattino');
+  // telefono basso (360×640, barre del browser comprese): il racconto deve stare tutto nello schermo
+  await viewport(360, 640, true);
+  for (const p of [0.3, 0.99]) {
+    const fit = await storyAt(p).then(() => evaluate(`(() => { const vh = innerHeight; const q = (s) => document.querySelector(s).getBoundingClientRect();
+      const clock = q('.story-clock'), chat = q('.sb-chat'), counter = q('.story-counter'), prog = q('.story-progress');
+      return { ok: clock.top >= 56 && chat.bottom <= vh && chat.height > 220 && chat.width > innerWidth * 0.8 && prog.bottom <= chat.top && counter.bottom <= chat.top,
+        clock: Math.round(clock.top), chat: [Math.round(chat.top), Math.round(chat.bottom), Math.round(chat.height)], vh }; })()`));
+    check(fit.ok, `storia su telefono basso (${p === 0.3 ? 'notte' : 'mattino'}): orologio, testo e chat interi (${JSON.stringify(fit)})`);
+  }
+  await shot('13f-storia-telefono-basso');
+  await viewport(390, 844, true);
   await evaluate(`scrollTo({ top: 0, behavior: 'instant' })`);
   await sleep(500);
   await shot('13-landing-mobile', { full: true });

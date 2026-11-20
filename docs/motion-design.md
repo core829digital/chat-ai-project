@@ -50,6 +50,30 @@ segue la tangente dell'anello; i trattini sono divisi in 4 fasce di profondità 
 e disegnati due volte: un alone largo e tenue e una linea sottile, in somma additiva.
 Anche la velocità dello scroll e il mouse la fanno ruotare leggermente.
 
+### Transizioni tra sezioni: nessuna linea
+
+Regola: sullo schermo non deve mai comparire il bordo netto di una sezione.
+- Le sezioni a tutto schermo (dichiarazione, "Una notte") hanno due veli neri pilotati dallo scroll:
+  `--en` (il bordo alto sta entrando) e `--lv` (il bordo basso sta uscendo), con curva a radice quadrata.
+  Il velo non sfuma in opacità: **cresce dal bordo** (`scaleY`), così il pixel sul bordo è nero fin dal
+  primo fotogramma e l'ombra si allunga col movimento. All'uscita dall'alba, il chiaro si scioglie nel nero.
+- La sfera di particelle diventa trasparente prima che il bordo di una sezione opaca entri nello schermo
+  (fotogramma con opacità 0: inizia mezzo schermo prima) e ritorna solo quando il bordo è quasi uscito:
+  non viene mai tagliata da una linea dritta.
+- Agenzie: niente scheda ritagliata; la rete si apre dal centro con una maschera ellittica sfumata, fondo
+  e video sfumano nel nero sopra e sotto. Piè di pagina: il nero arriva per gradi, senza bordo.
+- Vetro: base scura sotto il riflesso, così la sfera dietro alle schede diventa un bagliore blu e non una nebbia grigia.
+
+### Telefoni
+
+- Racconto "Una notte": colonna elastica (il testo prende lo spazio che gli serve, la chat il resto),
+  capitoli impilati nella stessa cella della griglia, orologio che scala con l'altezza (`svh`), contatore
+  nella barra del browser. Verificato a 390×844, 375×667 e 360×640, con un controllo automatico nell'e2e.
+- Fotogrammi della sfera dedicati ai telefoni (`data-orb-m`): forme ampie e tenui dietro le schede impilate.
+- Ritmo verticale più compatto, titoli e testi ridimensionati, schede dei settori scorrevoli col dito,
+  sfocatura del vetro ridotta (meno lavoro per la scheda grafica), margini di sicurezza per notch e barra home.
+- All'alba la testata passa ai toni chiari finché il cielo chiaro le sta sotto.
+
 ### Motore di scroll
 
 Ogni elemento con `data-scroll` riceve a ogni fotogramma `--pe` (entrata), `--p` (passaggio),

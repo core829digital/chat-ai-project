@@ -215,7 +215,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section features" id="perche" data-orb="sphere .5 .2 .34 .2 .95">
+<section class="section features" id="perche" data-orb="sphere .5 .2 .34 .2 .95" data-orb-m="sphere .5 .55 1.1 .2 .4">
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <h2 class="h2 words">${words('Il tuo sito, sempre aperto.')}</h2>
@@ -242,7 +242,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="story" id="una-notte" data-story aria-labelledby="story-title" data-orb="sphere .5 .5 .3 .2 0">
+<section class="story" id="una-notte" data-story data-scroll="edges" aria-labelledby="story-title" data-orb="sphere .5 .5 .3 .2 0">
   <div class="story-sticky">
     <canvas class="story-sky" data-field="sky" aria-hidden="true"></canvas>
     <div class="wrap story-grid">
@@ -287,7 +287,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section has-video" id="come-funziona" data-orb="sphere .92 .42 .55 .3 .26">
+<section class="section has-video" id="come-funziona" data-orb="sphere .92 .42 .55 .3 .26" data-orb-m="sphere .85 .3 .9 .3 .22">
   ${sectionVideo('flusso')}
   <div class="wrap">
     <div class="section-head center" data-reveal>
@@ -346,7 +346,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section bento-section" id="regole" data-orb="sphere .5 .56 1.12 .35 1">
+<section class="section bento-section" id="regole" data-orb="sphere .5 .56 1.12 .35 1" data-orb-m="sphere .5 .5 1.25 .35 .5">
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <p class="eyebrow">Regole europee</p>
@@ -378,7 +378,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section" id="settori" data-orb="funnel .3 .55 1 .1 .9">
+<section class="section" id="settori" data-orb="funnel .3 .55 1 .1 .9" data-orb-m="funnel .5 .45 1.4 .1 .5">
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <p class="eyebrow">Modelli di settore</p>
@@ -420,7 +420,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section" id="prezzi" data-orb="ring .5 .1 1.05 -.95 .85">
+<section class="section" id="prezzi" data-orb="ring .5 .1 1.05 -.95 .85" data-orb-m="ring .5 .12 1.5 -.95 .6">
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <p class="eyebrow">Prezzi</p>

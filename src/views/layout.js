@@ -36,7 +36,7 @@ function head({ title, description, css }) {
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${fullTitle}</title>
 ${description ? html`<meta name="description" content="${description}">` : ''}
 <meta property="og:title" content="${fullTitle}">

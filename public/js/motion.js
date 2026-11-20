@@ -135,7 +135,8 @@
     var PER = compact ? 40 : 60;
     var anchors = [];
     document.querySelectorAll('[data-orb]').forEach(function (el) {
-      var a = el.getAttribute('data-orb').trim().split(/\s+/);
+      // sui telefoni si usano i fotogrammi dedicati (data-orb-m), se la sezione li dichiara
+      var a = ((compact && el.getAttribute('data-orb-m')) || el.getAttribute('data-orb')).trim().split(/\s+/);
       var k = SHAPES.indexOf(a[0]);
       anchors.push({ el: el, w: SHAPES.map(function (_, i) { return i === k ? 1 : 0; }), x: +a[1], y: +a[2], s: +a[3], tilt: +a[4], alpha: +a[5], from: 0, to: 0 });
     });
@@ -147,6 +148,12 @@
         var half = Math.min(r.height, vh) / 2;
         a.from = top + half;
         a.to = Math.max(a.from, top + r.height - half);
+        if (a.alpha === 0) {
+          // sezione opaca: invisibile già quando il bordo alto spunta in basso, di nuovo visibile
+          // solo quando il bordo basso è quasi uscito in alto (così non viene mai "tagliata")
+          a.from = top - vh * 0.5;
+          a.to = top + r.height + vh * 0.3;
+        }
       });
     };
     measureAnchors();
@@ -551,6 +558,9 @@
         updateDom(p);
       }
       if (sky && sky.visible) drawSky(p, t);
+      // all'alba il cielo è chiaro: la testata passa ai toni chiari finché il racconto sta sotto di lei
+      var sr2 = story.getBoundingClientRect();
+      root.classList.toggle('over-light', sticky.classList.contains('is-day') && sr2.top < 70 && sr2.bottom > 70);
     });
   }
 
@@ -650,13 +660,21 @@
       var px = clamp(-r.top / Math.max(1, r.height), 0, 1);
       // --pp: avanzamento mentre la sezione è fissata (sticky) — 0 quando si fissa, 1 quando si sblocca
       var pp = clamp(-r.top / Math.max(1, r.height - vh), 0, 1);
-      var key = (p * 1000 | 0) + ':' + (pe * 1000 | 0) + ':' + (px * 1000 | 0) + ':' + (pp * 1000 | 0);
+      // --en: il bordo alto sta ancora entrando (1 = appena comparso in basso, 0 = arrivato in cima)
+      // --lv: il bordo basso sta uscendo (0 = ancora fermo in fondo, 1 = salito per un terzo di schermo)
+      // servono a sciogliere nel nero i bordi delle sezioni a tutto schermo: nessuna linea di stacco
+      // radice quadrata: il velo è già ampio appena il bordo compare, poi cresce più piano
+      var en = Math.sqrt(clamp(r.top / (vh * 0.4), 0, 1));
+      var lv = Math.sqrt(clamp((vh - r.bottom) / (vh * 0.4), 0, 1));
+      var key = (p * 1000 | 0) + ':' + (pe * 1000 | 0) + ':' + (px * 1000 | 0) + ':' + (pp * 1000 | 0) + ':' + (en * 100 | 0) + ':' + (lv * 100 | 0);
       if (el._key === key) return;
       el._key = key;
       el.style.setProperty('--p', p.toFixed(4));
       el.style.setProperty('--pe', pe.toFixed(4));
       el.style.setProperty('--px', px.toFixed(4));
       el.style.setProperty('--pp', pp.toFixed(4));
+      el.style.setProperty('--en', en.toFixed(3));
+      el.style.setProperty('--lv', lv.toFixed(3));
       var h = handlers[el.getAttribute('data-scroll')];
       if (h) h(el, pe, p, px);
     };
