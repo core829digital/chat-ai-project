@@ -30,9 +30,9 @@ const clientIp = (ctx) =>
   (config.production && String(ctx.req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || ctx.req.socket.remoteAddress || '';
 
 // Carica il widget e verifica che la richiesta arrivi da un dominio autorizzato.
-function loadPublicWidget(ctx) {
+async function loadPublicWidget(ctx) {
   cors(ctx);
-  const widget = M.getWidgetByPublicId(ctx.params.pid);
+  const widget = await M.getWidgetByPublicId(ctx.params.pid);
   if (!widget) throw new HttpError(404, 'Widget non trovato');
   const origin = ctx.req.headers.origin;
   if (origin && origin !== ownOrigin && origin !== 'null') {
@@ -46,15 +46,15 @@ function loadPublicWidget(ctx) {
       throw new HttpError(403, `Dominio non autorizzato per questo widget: ${host}`);
     }
   }
-  const account = M.getAccount(widget.account_id);
+  const account = await M.getAccount(widget.account_id);
   return { widget, account };
 }
 
 // Le richieste di anteprima dalla dashboard (stessa origine + sessione del proprietario) sono "di prova":
 // non contano nei limiti del piano e restano distinguibili nelle statistiche.
-function isOwnerPreview(ctx, widget) {
+async function isOwnerPreview(ctx, widget) {
   if (!ctx.body.preview || ctx.req.headers.origin !== ownOrigin) return false;
-  const session = M.getSession(ctx.cookies[SESSION_COOKIE]);
+  const session = await M.getSession(ctx.cookies[SESSION_COOKIE]);
   return Boolean(session && canManageAccount(session.user, widget.account_id));
 }
 
@@ -78,12 +78,12 @@ function publicSettings(widget, account) {
 }
 
 export function registerApi(router) {
-  router.options('/api/widget/:pid/config', (ctx) => { cors(ctx); ctx.text('', 204); });
-  router.options('/api/widget/:pid/messages', (ctx) => { cors(ctx); ctx.text('', 204); });
-  router.options('/api/widget/:pid/leads', (ctx) => { cors(ctx); ctx.text('', 204); });
+  router.options('/api/widget/:pid/config', async (ctx) => { cors(ctx); ctx.text('', 204); });
+  router.options('/api/widget/:pid/messages', async (ctx) => { cors(ctx); ctx.text('', 204); });
+  router.options('/api/widget/:pid/leads', async (ctx) => { cors(ctx); ctx.text('', 204); });
 
-  router.get('/api/widget/:pid/config', (ctx) => {
-    const { widget, account } = loadPublicWidget(ctx);
+  router.get('/api/widget/:pid/config', async (ctx) => {
+    const { widget, account } = await loadPublicWidget(ctx);
     const serving = widget.status === 'active' && M.accountIsServing(account);
     if (!serving) return ctx.json({ active: false });
     ctx.json({
@@ -94,28 +94,28 @@ export function registerApi(router) {
     });
   });
 
-  router.post('/api/widget/:pid/messages', (ctx) => {
-    const { widget, account } = loadPublicWidget(ctx);
+  router.post('/api/widget/:pid/messages', async (ctx) => {
+    const { widget, account } = await loadPublicWidget(ctx);
     if (widget.status !== 'active' || !M.accountIsServing(account)) throw new HttpError(403, 'Assistente non attivo');
     const text = str(ctx.body.text, 1000);
     if (!text) throw new HttpError(400, 'Messaggio vuoto');
     if (!messageLimiter(`${clientIp(ctx)}:${widget.id}`)) {
       throw new HttpError(429, 'Stai scrivendo troppo velocemente. Riprova tra un minuto.');
     }
-    const isTest = isOwnerPreview(ctx, widget);
+    const isTest = await isOwnerPreview(ctx, widget);
     const visitorId = str(ctx.body.visitorId, 64) || 'anonimo';
     const pageUrl = str(ctx.body.pageUrl, 500);
 
-    let conversation = ctx.body.conversationId ? M.getConversation(widget.id, str(ctx.body.conversationId, 40)) : null;
+    let conversation = ctx.body.conversationId ? await M.getConversation(widget.id, str(ctx.body.conversationId, 40)) : null;
     if (!conversation) {
-      conversation = M.createConversation({ widgetId: widget.id, visitorId, pageUrl, isTest });
+      conversation = await M.createConversation({ widgetId: widget.id, visitorId, pageUrl, isTest });
     }
-    if (!isTest) M.markWidgetSeen(widget.id, pageUrl);
+    if (!isTest) await M.markWidgetSeen(widget.id, pageUrl);
 
-    M.addMessage(conversation.id, { role: 'visitor', body: text });
+    await M.addMessage(conversation.id, { role: 'visitor', body: text });
 
     const plan = PLANS[account.plan] || PLANS.pro;
-    const overLimit = !isTest && M.accountConversationsThisMonth(account.id) > plan.conversations;
+    const overLimit = !isTest && await M.accountConversationsThisMonth(account.id) > plan.conversations;
     let result;
     if (overLimit) {
       result = {
@@ -123,10 +123,10 @@ export function registerApi(router) {
         knowledgeId: null, outcome: 'limit', action: 'lead_form', suggestions: [],
       };
     } else {
-      result = respond({ settings: widget.settings, knowledge: M.listKnowledge(widget.id), message: text });
+      result = await respond({ settings: widget.settings, knowledge: await M.listKnowledge(widget.id), message: text });
     }
-    M.addMessage(conversation.id, { role: 'bot', body: result.text, knowledgeId: result.knowledgeId, outcome: result.outcome });
-    if (result.knowledgeId && !isTest) M.hitKnowledge(result.knowledgeId);
+    await M.addMessage(conversation.id, { role: 'bot', body: result.text, knowledgeId: result.knowledgeId, outcome: result.outcome });
+    if (result.knowledgeId && !isTest) await M.hitKnowledge(result.knowledgeId);
 
     ctx.json({
       conversationId: conversation.public_id,
@@ -136,8 +136,8 @@ export function registerApi(router) {
     });
   });
 
-  router.post('/api/widget/:pid/leads', (ctx) => {
-    const { widget, account } = loadPublicWidget(ctx);
+  router.post('/api/widget/:pid/leads', async (ctx) => {
+    const { widget, account } = await loadPublicWidget(ctx);
     if (widget.status !== 'active' || !M.accountIsServing(account)) throw new HttpError(403, 'Assistente non attivo');
     if (!leadLimiter(`${clientIp(ctx)}:${widget.id}`)) throw new HttpError(429, 'Troppi invii. Riprova più tardi.');
 
@@ -152,11 +152,11 @@ export function registerApi(router) {
     if (ctx.body.consent !== true && ctx.body.consent !== 'true') errors.consent = 'Serve il consenso per ricontattarti';
     if (Object.keys(errors).length) return ctx.json({ error: 'Controlla i campi evidenziati', fields: errors }, 422);
 
-    const conversation = ctx.body.conversationId ? M.getConversation(widget.id, str(ctx.body.conversationId, 40)) : null;
-    const isTest = isOwnerPreview(ctx, widget);
-    M.createLead({ widgetId: widget.id, conversationId: conversation?.id || null, name, email, phone, message, isTest });
+    const conversation = ctx.body.conversationId ? await M.getConversation(widget.id, str(ctx.body.conversationId, 40)) : null;
+    const isTest = await isOwnerPreview(ctx, widget);
+    await M.createLead({ widgetId: widget.id, conversationId: conversation?.id || null, name, email, phone, message, isTest });
     const reply = `Grazie ${name.split(' ')[0]}! Abbiamo ricevuto i tuoi recapiti: ti ricontatteremo al più presto.`;
-    if (conversation) M.addMessage(conversation.id, { role: 'bot', body: reply, outcome: 'lead' });
+    if (conversation) await M.addMessage(conversation.id, { role: 'bot', body: reply, outcome: 'lead' });
     ctx.json({ ok: true, reply: { text: reply } });
   });
 }

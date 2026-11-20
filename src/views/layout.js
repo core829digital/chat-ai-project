@@ -23,6 +23,11 @@ const ICONS = {
 export const icon = (name, size = 18) =>
   raw(`<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${ICONS[name] || ''}"/></svg>`);
 
+// Freccia nel cerchio dei pulsanti bianchi: ruota di 45° al passaggio del mouse.
+export const chip = () => raw('<span class="btn-chip" aria-hidden="true"><svg class="i" width="13" height="13" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg></span>');
+
+const NAV = [['/#come-funziona', 'Come funziona'], ['/#regole', 'Privacy e AI Act'], ['/#settori', 'Settori'], ['/#prezzi', 'Prezzi'], ['/#domande', 'Domande']];
+
 export const logo = () => html`<span class="logo"><span class="logo-mark" aria-hidden="true">${icon('chat', 16)}</span>${config.brand.name}</span>`;
 
 function head({ title, description, css }) {
@@ -37,7 +42,8 @@ ${description ? html`<meta name="description" content="${description}">` : ''}
 <meta property="og:title" content="${fullTitle}">
 ${description ? html`<meta property="og:description" content="${description}">` : ''}
 <meta property="og:type" content="website">
-<meta name="theme-color" content="#F6F4EF">
+<meta name="theme-color" content="#000000">
+<link rel="preload" href="/static/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/${css}">
 </head>`;
@@ -56,37 +62,32 @@ export function publicLayout(ctx, { title, description, body, bodyClass = '', sc
   const loggedIn = Boolean(ctx.user);
   const dashboard = ctx.user?.role === 'admin' ? '/admin' : '/app';
   return html`${head({ title, description, css: 'site.css' })}
-<body class="${bodyClass}">
+<body class="site ${bodyClass}">
 <a class="skip" href="#main">Vai al contenuto</a>
 <header class="site-header">
-  <span class="scroll-progress" aria-hidden="true"></span>
-  <div class="wrap header-inner">
+  <div class="header-inner">
     <a href="/" class="brand" aria-label="${config.brand.name}, pagina iniziale">${logo()}</a>
     <nav class="nav" aria-label="Principale">
       <span class="nav-ink" aria-hidden="true"></span>
-      <a href="/#come-funziona">Come funziona</a>
-      <a href="/#settori">Settori</a>
-      <a href="/#agenzie">Per agenzie</a>
-      <a href="/#prezzi">Prezzi</a>
-      <a href="/#domande">Domande</a>
+      ${NAV.map(([href, label]) => html`<a href="${href}">${label}</a>`)}
     </nav>
     <div class="header-cta">
       ${loggedIn
-        ? html`<a class="btn btn-primary btn-sm" href="${dashboard}">Vai alla dashboard</a>`
-        : html`<a class="link-quiet" href="/accedi">Accedi</a><a class="btn btn-primary btn-sm" href="/registrati">Prova gratis</a>`}
+        ? html`<a class="btn btn-white btn-sm" href="${dashboard}">Vai alla dashboard ${chip()}</a>`
+        : html`<a class="link-quiet" href="/accedi">Accedi</a><a class="btn btn-white btn-sm" href="/registrati" data-magnetic>Prova gratis ${chip()}</a>`}
     </div>
     <details class="mobile-nav">
       <summary aria-label="Apri il menu"><span></span><span></span><span></span></summary>
       <div class="mobile-panel">
-        <a href="/#come-funziona">Come funziona</a>
-        <a href="/#settori">Settori</a>
-        <a href="/#agenzie">Per agenzie</a>
-        <a href="/#prezzi">Prezzi</a>
-        <a href="/#domande">Domande</a>
-        ${loggedIn ? html`<a href="${dashboard}">Dashboard</a>` : html`<a href="/accedi">Accedi</a><a href="/registrati" class="btn btn-primary">Prova gratis 14 giorni</a>`}
+        <div class="mobile-links">
+          ${NAV.map(([href, label], i) => html`<a href="${href}" style="--i:${i}">${label}</a>`)}
+          ${loggedIn ? html`<a href="${dashboard}" style="--i:${NAV.length}">Dashboard</a>` : html`<a href="/accedi" style="--i:${NAV.length}">Accedi</a>`}
+        </div>
+        ${loggedIn ? '' : html`<a href="/registrati" class="btn btn-white btn-block">Prova gratis 14 giorni ${chip()}</a>`}
       </div>
     </details>
   </div>
+  <span class="scroll-progress" aria-hidden="true"></span>
 </header>
 <main id="main">${body}</main>
 <footer class="site-footer">

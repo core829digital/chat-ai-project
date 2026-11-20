@@ -30,19 +30,19 @@ function inviteEmail(account, user, link) {
   return `mailto:${encodeURIComponent(user.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-function loadAccount(id) {
-  const account = M.getAccount(Number(id));
+async function loadAccount(id) {
+  const account = await M.getAccount(Number(id));
   if (!account) throw new HttpError(404, 'Cliente non trovato');
   return account;
 }
 
 export function registerAdmin(router) {
   // ---------- Panoramica ----------
-  router.get('/admin', requireAdmin, (ctx) => {
-    const s = M.platformStats();
-    const daily = M.dailyConversations(M.allWidgetIds(), 30);
-    const recentAccounts = M.listAccounts().slice(0, 6);
-    const recent = M.recentConversations(8);
+  router.get('/admin', requireAdmin, async (ctx) => {
+    const s = await M.platformStats();
+    const daily = await M.dailyConversations(M.allWidgetIds(), 30);
+    const recentAccounts = (await M.listAccounts()).slice(0, 6);
+    const recent = await M.recentConversations(8);
     const body = html`
       <section class="grid-4">
         ${statCard('Ricavi ricorrenti (MRR)', fmtEur(s.mrr), `${s.byStatus.active} clienti paganti`)}
@@ -86,10 +86,10 @@ export function registerAdmin(router) {
   });
 
   // ---------- Clienti ----------
-  router.get('/admin/accounts', requireAdmin, (ctx) => {
+  router.get('/admin/accounts', requireAdmin, async (ctx) => {
     const q = str(ctx.query.q, 100);
     const status = Object.keys(ACCOUNT_STATUS).includes(ctx.query.stato) ? ctx.query.stato : '';
-    const accounts = M.listAccounts({ q, status });
+    const accounts = await M.listAccounts({ q, status });
     const body = html`
       <form class="toolbar" method="get" action="/admin/accounts" role="search">
         <div class="search-row">
@@ -150,11 +150,11 @@ export function registerAdmin(router) {
       </aside>
     </form>`;
 
-  router.get('/admin/accounts/new', requireAdmin, (ctx) => {
+  router.get('/admin/accounts/new', requireAdmin, async (ctx) => {
     ctx.html(adminLayout(ctx, { title: 'Nuovo cliente', active: 'accounts', body: newAccountForm(ctx) }));
   });
 
-  router.post('/admin/accounts', requireAdmin, (ctx) => {
+  router.post('/admin/accounts', requireAdmin, async (ctx) => {
     const v = {
       company: str(ctx.body.company, 120),
       name: str(ctx.body.name, 120),
@@ -170,30 +170,30 @@ export function registerAdmin(router) {
     if (!v.company) errors.company = 'Obbligatorio.';
     if (!v.name) errors.name = 'Obbligatorio.';
     if (!isEmail(v.email)) errors.email = 'Email non valida.';
-    else if (M.findUserByEmail(v.email)) errors.email = 'Esiste già un utente con questa email.';
+    else if (await M.findUserByEmail(v.email)) errors.email = 'Esiste già un utente con questa email.';
     if (v.siteUrl && !isHttpUrl(v.siteUrl)) errors.siteUrl = 'Indirizzo completo, es. https://www.sitocliente.it';
     if (Object.keys(errors).length) {
       return ctx.html(adminLayout(ctx, { title: 'Nuovo cliente', active: 'accounts', body: newAccountForm(ctx, v, errors) }), 422);
     }
-    const { accountId, userId } = M.createAccountWithUser({
+    const { accountId, userId } = await M.createAccountWithUser({
       company: v.company, name: v.name, email: v.email, password: null,
       plan: v.plan, status: v.status, sector: v.sector, createdBy: 'admin',
     });
-    if (v.notes) M.updateAccount(accountId, { notes: v.notes });
-    if (v.createWidget) M.createWidget({ accountId, name: v.company, siteUrl: v.siteUrl, sector: v.sector });
-    const token = M.createInvite(userId);
+    if (v.notes) await M.updateAccount(accountId, { notes: v.notes });
+    if (v.createWidget) await M.createWidget({ accountId, name: v.company, siteUrl: v.siteUrl, sector: v.sector });
+    const token = await M.createInvite(userId);
     flash(ctx, inviteUrl(token), 'invite');
     ctx.redirect(`/admin/accounts/${accountId}`);
   });
 
   // ---------- Scheda cliente ----------
-  router.get('/admin/accounts/:id', requireAdmin, (ctx) => {
-    const account = loadAccount(ctx.params.id);
-    const users = M.listAccountUsers(account.id);
+  router.get('/admin/accounts/:id', requireAdmin, async (ctx) => {
+    const account = await loadAccount(ctx.params.id);
+    const users = await M.listAccountUsers(account.id);
     const owner = users[0];
-    const widgets = M.listWidgets(account.id);
+    const widgets = await M.listWidgets(account.id);
     const plan = PLANS[account.plan];
-    const used = M.accountConversationsThisMonth(account.id);
+    const used = await M.accountConversationsThisMonth(account.id);
     const freshInvite = ctx.flashMessage?.type === 'invite' ? ctx.flashMessage.text : null;
     if (freshInvite) ctx.flashMessage = null;
 
@@ -283,8 +283,8 @@ export function registerAdmin(router) {
     ctx.html(adminLayout(ctx, { title: account.name, active: 'accounts', body }));
   });
 
-  router.post('/admin/accounts/:id', requireAdmin, (ctx) => {
-    const account = loadAccount(ctx.params.id);
+  router.post('/admin/accounts/:id', requireAdmin, async (ctx) => {
+    const account = await loadAccount(ctx.params.id);
     const name = str(ctx.body.name, 120);
     const status = ACCOUNT_STATUS[ctx.body.status] ? ctx.body.status : account.status;
     const trialEnds = /^\d{4}-\d{2}-\d{2}$/.test(str(ctx.body.trialEnds)) ? `${ctx.body.trialEnds} 23:59:59` : account.trial_ends_at;
@@ -292,7 +292,7 @@ export function registerAdmin(router) {
       flash(ctx, 'Il nome dell’attività è obbligatorio.', 'error');
       return ctx.redirect(`/admin/accounts/${account.id}`);
     }
-    M.updateAccount(account.id, {
+    await M.updateAccount(account.id, {
       name,
       plan: PLANS[ctx.body.plan] ? ctx.body.plan : account.plan,
       status,
@@ -304,8 +304,8 @@ export function registerAdmin(router) {
     ctx.redirect(`/admin/accounts/${account.id}`);
   });
 
-  router.post('/admin/accounts/:id/widgets', requireAdmin, (ctx) => {
-    const account = loadAccount(ctx.params.id);
+  router.post('/admin/accounts/:id/widgets', requireAdmin, async (ctx) => {
+    const account = await loadAccount(ctx.params.id);
     const name = str(ctx.body.name, 80);
     const siteUrl = str(ctx.body.siteUrl, 300);
     if (!name || (siteUrl && !isHttpUrl(siteUrl))) {
@@ -313,60 +313,60 @@ export function registerAdmin(router) {
       return ctx.redirect(`/admin/accounts/${account.id}`);
     }
     const plan = PLANS[account.plan];
-    if (M.countWidgets(account.id) >= plan.widgets) {
+    if (await M.countWidgets(account.id) >= plan.widgets) {
       flash(ctx, `Il piano ${plan.name} include ${plan.widgets} assistenti: cambia piano per aggiungerne altri.`, 'error');
       return ctx.redirect(`/admin/accounts/${account.id}`);
     }
     const sector = SECTORS[ctx.body.sector] ? ctx.body.sector : account.sector;
-    const widget = M.createWidget({ accountId: account.id, name, siteUrl, sector });
+    const widget = await M.createWidget({ accountId: account.id, name, siteUrl, sector });
     flash(ctx, 'Assistente creato con il modello di settore. Completa le risposte prima di consegnarlo.');
     ctx.redirect(`/app/widgets/${widget.id}/risposte`);
   });
 
-  router.post('/admin/accounts/:id/invite', requireAdmin, (ctx) => {
-    const account = loadAccount(ctx.params.id);
-    const user = M.getUser(Number(ctx.body.userId));
+  router.post('/admin/accounts/:id/invite', requireAdmin, async (ctx) => {
+    const account = await loadAccount(ctx.params.id);
+    const user = await M.getUser(Number(ctx.body.userId));
     if (!user || user.account_id !== account.id) throw new HttpError(404, 'Utente non trovato');
-    flash(ctx, inviteUrl(M.createInvite(user.id)), 'invite');
+    flash(ctx, inviteUrl(await M.createInvite(user.id)), 'invite');
     ctx.redirect(`/admin/accounts/${account.id}`);
   });
 
-  router.post('/admin/accounts/:id/elimina', requireAdmin, (ctx) => {
-    const account = loadAccount(ctx.params.id);
+  router.post('/admin/accounts/:id/elimina', requireAdmin, async (ctx) => {
+    const account = await loadAccount(ctx.params.id);
     if (str(ctx.body.confirm) !== account.name) {
       flash(ctx, 'Conferma non corretta: il cliente non è stato eliminato.', 'error');
       return ctx.redirect(`/admin/accounts/${account.id}`);
     }
-    M.deleteAccount(account.id);
+    await M.deleteAccount(account.id);
     flash(ctx, `Cliente “${account.name}” eliminato.`);
     ctx.redirect('/admin/accounts');
   });
 
   // ---------- Accesso come cliente ----------
-  router.post('/admin/accounts/:id/impersonate', requireAdmin, (ctx) => {
+  router.post('/admin/accounts/:id/impersonate', requireAdmin, async (ctx) => {
     if (ctx.impersonator) throw new HttpError(400, 'Sei già nella dashboard di un cliente.');
-    const account = loadAccount(ctx.params.id);
-    const owner = M.listAccountUsers(account.id)[0];
+    const account = await loadAccount(ctx.params.id);
+    const [owner] = await M.listAccountUsers(account.id);
     if (!owner) throw new HttpError(404, 'Il cliente non ha utenti');
     const adminId = ctx.user.id;
-    endSession(ctx);
-    startSession(ctx, owner.id, adminId);
+    await endSession(ctx);
+    await startSession(ctx, owner.id, adminId);
     flash(ctx, `Stai vedendo la dashboard di ${account.name}.`);
     ctx.redirect('/app');
   });
 
-  router.post('/admin/impersonate/stop', (ctx) => {
+  router.post('/admin/impersonate/stop', async (ctx) => {
     if (!ctx.user || !ctx.impersonator) return ctx.redirect('/accedi');
     const accountId = ctx.user.account_id;
     const adminId = ctx.impersonator.id;
-    endSession(ctx);
-    startSession(ctx, adminId);
+    await endSession(ctx);
+    await startSession(ctx, adminId);
     ctx.redirect(accountId ? `/admin/accounts/${accountId}` : '/admin');
   });
 
   // ---------- Tutti gli assistenti ----------
-  router.get('/admin/widgets', requireAdmin, (ctx) => {
-    const widgets = M.listAllWidgets();
+  router.get('/admin/widgets', requireAdmin, async (ctx) => {
+    const widgets = await M.listAllWidgets();
     const body = widgets.length
       ? html`<div class="table-wrap"><table class="table">
           <thead><tr><th scope="col">Assistente</th><th scope="col">Cliente</th><th scope="col">Installazione</th><th scope="col" class="num">Risposte</th><th scope="col" class="num">Conv. (30 g)</th><th scope="col" class="num">Contatti (30 g)</th></tr></thead>
@@ -382,11 +382,9 @@ export function registerAdmin(router) {
     ctx.html(adminLayout(ctx, { title: 'Tutti gli assistenti', active: 'widgets', body }));
   });
 
-  router.get('/admin/leads', requireAdmin, (ctx) => {
-    const leads = M.listLeads({ limit: 300 }).filter((l) => !l.is_test).map((l) => {
-      const w = M.getWidget(l.widget_id);
-      return { ...l, account_name: w ? M.getAccount(w.account_id)?.name : '' };
-    });
+  router.get('/admin/leads', requireAdmin, async (ctx) => {
+    // il nome del cliente arriva già dalla query (account_name): una sola lettura per tutta la lista
+    const leads = (await M.listLeads({ limit: 300 })).filter((l) => !l.is_test);
     ctx.html(adminLayout(ctx, {
       title: 'Tutti i contatti', active: 'leads',
       body: html`<p class="muted">Contatti raccolti da tutti gli assistenti della piattaforma (esclusi quelli di prova).</p>${leadsTable(ctx, leads, { showAccount: true, returnTo: '/admin/leads' })}`,

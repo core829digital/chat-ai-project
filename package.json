@@ -2,17 +2,31 @@
   "name": "aperto",
   "version": "0.1.0",
   "private": true,
-  "description": "Aperto — assistente per siti web installabile con una riga di codice. MVP senza AI collegata.",
+  "description": "Aperto — assistente per siti web installabile con una riga di codice. Database Neon Postgres (o SQLite in locale), risposte AI opzionali tramite Neon AI Gateway.",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start:neon": "node --env-file-if-exists=.env.local src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env.local src/server.js",
+    "build": "node scripts/build.js",
+    "migrate": "node --env-file-if-exists=.env.local scripts/migrate.js",
     "seed": "node scripts/seed.js",
+    "seed:neon": "node --env-file-if-exists=.env.local scripts/seed.js",
     "test": "node --test test/",
     "e2e": "node scripts/e2e.js",
     "videos": "node scripts/render-videos.js"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.4",
+    "@neon/env": "^2.1.7",
+    "@neon/realtime": "^0.2.1",
+    "@vercel/functions": "^3.11.3",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

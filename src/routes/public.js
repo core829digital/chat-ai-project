@@ -16,13 +16,13 @@ const sectorOptions = Object.entries(SECTORS).map(([id, s]) => [id, s.label]);
 const homeFor = (user) => (user.role === 'admin' ? '/admin' : '/app');
 
 export function registerPublic(router) {
-  router.get('/', (ctx) => {
-    const demo = M.getWidgetByPublicId(DEMO_WIDGET_ID);
+  router.get('/', async (ctx) => {
+    const demo = await M.getWidgetByPublicId(DEMO_WIDGET_ID);
     ctx.html(landingPage(ctx, { demoWidgetId: demo ? demo.public_id : null }));
   });
 
-  router.get('/privacy', (ctx) => ctx.html(legalPage(ctx, 'privacy')));
-  router.get('/termini', (ctx) => ctx.html(legalPage(ctx, 'termini')));
+  router.get('/privacy', async (ctx) => ctx.html(legalPage(ctx, 'privacy')));
+  router.get('/termini', async (ctx) => ctx.html(legalPage(ctx, 'termini')));
 
   // ---------- Registrazione ----------
   const signupForm = (ctx, values = {}, errors = {}) =>
@@ -48,12 +48,12 @@ export function registerPublic(router) {
         <p class="auth-switch muted">Hai già un account? <a href="/accedi">Accedi</a></p>`,
     });
 
-  router.get('/registrati', (ctx) => {
+  router.get('/registrati', async (ctx) => {
     if (ctx.user) return ctx.redirect(homeFor(ctx.user));
     ctx.html(signupForm(ctx));
   });
 
-  router.post('/registrati', (ctx) => {
+  router.post('/registrati', async (ctx) => {
     const v = {
       company: str(ctx.body.company, 120),
       sector: SECTORS[ctx.body.sector] ? ctx.body.sector : 'generico',
@@ -66,7 +66,7 @@ export function registerPublic(router) {
     if (!v.company) errors.company = 'Scrivi il nome della tua attività.';
     if (!v.name) errors.name = 'Scrivi il tuo nome.';
     if (!isEmail(v.email)) errors.email = 'Inserisci un indirizzo email valido.';
-    else if (M.findUserByEmail(v.email)) errors.email = 'Esiste già un account con questa email. Prova ad accedere.';
+    else if (await M.findUserByEmail(v.email)) errors.email = 'Esiste già un account con questa email. Prova ad accedere.';
     if (v.password.length < 10) errors.password = 'La password deve avere almeno 10 caratteri.';
     if (v.password.length > 200) errors.password = 'La password è troppo lunga.';
     if (!v.terms) errors.terms = 'Per continuare devi accettare i termini di servizio.';
@@ -75,11 +75,11 @@ export function registerPublic(router) {
       return ctx.html(signupForm(ctx, v, { _: 'Troppe registrazioni da questa connessione. Riprova tra un’ora.' }), 429);
     }
 
-    const { userId } = M.createAccountWithUser({
+    const { userId } = await M.createAccountWithUser({
       company: v.company, name: v.name, email: v.email, password: v.password, sector: v.sector,
     });
-    M.touchLogin(userId);
-    startSession(ctx, userId);
+    await M.touchLogin(userId);
+    await startSession(ctx, userId);
     ctx.redirect(`/app/widgets/new?primo=1`);
   });
 
@@ -102,35 +102,35 @@ export function registerPublic(router) {
         Password dimenticata? Scrivi a <a href="mailto:${config.brand.supportEmail}">${config.brand.supportEmail}</a></p>`,
     });
 
-  router.get('/accedi', (ctx) => {
+  router.get('/accedi', async (ctx) => {
     if (ctx.user) return ctx.redirect(safeNext(ctx.query.next, homeFor(ctx.user)));
     ctx.html(loginForm(ctx, { next: safeNext(ctx.query.next, '') }));
   });
 
-  router.post('/accedi', (ctx) => {
+  router.post('/accedi', async (ctx) => {
     const email = str(ctx.body.email, 254).toLowerCase();
     const password = typeof ctx.body.password === 'string' ? ctx.body.password : '';
     const next = safeNext(ctx.body.next, '');
     if (!loginLimiter(`${ctx.req.socket.remoteAddress}:${email}`)) {
       return ctx.html(loginForm(ctx, { email, next, error: 'Troppi tentativi. Riprova tra 15 minuti.' }), 429);
     }
-    const user = M.findUserByEmail(email);
+    const user = await M.findUserByEmail(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
       return ctx.html(loginForm(ctx, { email, next, error: 'Email o password non corretti.' }), 401);
     }
-    M.touchLogin(user.id);
-    startSession(ctx, user.id);
+    await M.touchLogin(user.id);
+    await startSession(ctx, user.id);
     ctx.redirect(next || homeFor(user));
   });
 
-  router.post('/esci', (ctx) => {
-    endSession(ctx);
+  router.post('/esci', async (ctx) => {
+    await endSession(ctx);
     ctx.redirect('/');
   });
 
   // ---------- Invito (account creati dall'admin) ----------
-  const inviteForm = (ctx, invite, token, error = '') => {
-    const account = M.getAccount(invite.user.account_id);
+  const inviteForm = async (ctx, invite, token, error = '') => {
+    const account = await M.getAccount(invite.user.account_id);
     return authLayout(ctx, {
       title: 'Attiva il tuo account',
       body: html`
@@ -147,32 +147,32 @@ export function registerPublic(router) {
     });
   };
 
-  router.get('/invito/:token', (ctx) => {
-    const invite = M.getInvite(ctx.params.token);
+  router.get('/invito/:token', async (ctx) => {
+    const invite = await M.getInvite(ctx.params.token);
     if (!invite) throw new HttpError(404, 'Questo invito non è valido o è scaduto. Chiedi un nuovo link a chi te l’ha inviato.');
-    ctx.html(inviteForm(ctx, invite, ctx.params.token));
+    ctx.html(await inviteForm(ctx, invite, ctx.params.token));
   });
 
-  router.post('/invito/:token', (ctx) => {
-    const invite = M.getInvite(ctx.params.token);
+  router.post('/invito/:token', async (ctx) => {
+    const invite = await M.getInvite(ctx.params.token);
     if (!invite) throw new HttpError(404, 'Questo invito non è valido o è scaduto.');
     const password = typeof ctx.body.password === 'string' ? ctx.body.password : '';
     const name = str(ctx.body.name, 120);
     if (password.length < 10 || password.length > 200) {
-      return ctx.html(inviteForm(ctx, invite, ctx.params.token, 'La password deve avere almeno 10 caratteri.'), 422);
+      return ctx.html(await inviteForm(ctx, invite, ctx.params.token, 'La password deve avere almeno 10 caratteri.'), 422);
     }
-    const user = M.consumeInvite(ctx.params.token, password);
-    if (name) M.updateUserName(user.id, name);
-    M.touchLogin(user.id);
-    endSession(ctx);
-    startSession(ctx, user.id);
+    const user = await M.consumeInvite(ctx.params.token, password);
+    if (name) await M.updateUserName(user.id, name);
+    await M.touchLogin(user.id);
+    await endSession(ctx);
+    await startSession(ctx, user.id);
     flash(ctx, 'Account attivato. Benvenuto!');
     ctx.redirect('/app');
   });
 
   // ---------- Pagina chat ospitata (per siti dove non si può inserire codice) ----------
-  router.get('/c/:pid', (ctx) => {
-    const widget = M.getWidgetByPublicId(ctx.params.pid);
+  router.get('/c/:pid', async (ctx) => {
+    const widget = await M.getWidgetByPublicId(ctx.params.pid);
     if (!widget) throw new HttpError(404, 'Questa chat non esiste.');
     const title = widget.settings.title || widget.name;
     ctx.html(
@@ -194,8 +194,8 @@ export function registerPublic(router) {
   });
 
   // Compatibilità: alcuni visitatori arrivano con link vecchi o maiuscole diverse.
-  router.get('/login', (ctx) => ctx.redirect('/accedi', 301));
-  router.get('/signup', (ctx) => ctx.redirect('/registrati', 301));
+  router.get('/login', async (ctx) => ctx.redirect('/accedi', 301));
+  router.get('/signup', async (ctx) => ctx.redirect('/registrati', 301));
 }
 
 export { publicLayout };

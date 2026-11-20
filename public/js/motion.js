@@ -1,7 +1,8 @@
 /*
- * Motion design della landing — "Segnali notturni" (vedi docs/motion-design.md).
- * Tutto generato in codice: nessun video, nessuna libreria. Seme 2240.
- *  - Campo generativo nell'hero che reagisce al cursore
+ * Motion design della landing — "Notte elettrica" (vedi docs/motion-design.md).
+ * Tutto generato in codice: nessuna libreria. Seme 2240.
+ *  - Sfera di particelle che attraversa la pagina e cambia forma con lo scroll
+ *  - Scorrimento morbido con la rotella
  *  - Racconto a scroll "Una notte": cielo, segnali e interfaccia guidati dallo scroll
  *  - Interazioni: luce che segue il cursore, inclinazione 3D, pulsanti magnetici, barra di lettura
  */
@@ -114,114 +115,236 @@
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) start(); });
 
-  var INK = [26, 27, 24];
-  var GREEN = [31, 92, 74];
-  var LIVE = [63, 191, 127];
-  var TERRA = [168, 80, 42];
+  var GREEN = [29, 95, 214];   // blu dei contatti (di giorno)
+  var LIVE = [92, 225, 255];   // ciano dei segnali accesi
 
   // =====================================================================
-  // 1. Campo generativo dell'hero
+  // 1. La sfera di particelle che attraversa la pagina
+  //    Un solo oggetto 3D (anelli di trattini luminosi) che cambia forma, posizione e scala
+  //    seguendo i fotogrammi chiave scritti nelle sezioni: data-orb="forma x y scala inclinazione opacità".
+  //    Forme: wave (onda piana), sphere (globo a impronta), funnel (corno), ring (aureola).
+  //    Tra una sezione e l'altra i valori si fondono; un'inerzia rende il movimento morbido.
   // =====================================================================
-  var heroCanvas = document.querySelector('[data-field="hero"]');
-  if (heroCanvas && !reduceMotion) {
-    var hs = surface(heroCanvas);
-    var hp = [];
-    var mouse = { x: -9999, y: -9999, active: false };
-    var tmp = [0, 0];
-
-    var seedHero = function () {
-      var r = mulberry32(SEED);
-      var count = clamp(Math.round((hs.w * hs.h) / 8500), 70, 190);
-      hp = [];
-      for (var i = 0; i < count; i++) {
-        hp.push({
-          x: r() * hs.w, y: r() * hs.h, vx: 0, vy: 0, lit: 0,
-          kind: r() < 0.07 ? TERRA : r() < 0.35 ? GREEN : INK,
-          size: 0.8 + r() * 1.5, trail: [],
-        });
-      }
-    };
-    hs.onResize = seedHero;
-    seedHero();
-
-    var hero = heroCanvas.closest('.hero');
-    hero.addEventListener('pointermove', function (e) {
-      var r = heroCanvas.getBoundingClientRect();
-      mouse.x = e.clientX - r.left;
-      mouse.y = e.clientY - r.top;
-      mouse.active = true;
+  var orbCanvas = document.querySelector('[data-orb-canvas]');
+  if (orbCanvas) {
+    var os = surface(orbCanvas);
+    var TAU = Math.PI * 2;
+    var SHAPES = ['wave', 'sphere', 'funnel', 'ring'];
+    var compact = window.innerWidth < 760;
+    var RINGS = compact ? 30 : 46;
+    var PER = compact ? 40 : 60;
+    var anchors = [];
+    document.querySelectorAll('[data-orb]').forEach(function (el) {
+      var a = el.getAttribute('data-orb').trim().split(/\s+/);
+      var k = SHAPES.indexOf(a[0]);
+      anchors.push({ el: el, w: SHAPES.map(function (_, i) { return i === k ? 1 : 0; }), x: +a[1], y: +a[2], s: +a[3], tilt: +a[4], alpha: +a[5], from: 0, to: 0 });
     });
-    hero.addEventListener('pointerleave', function () { mouse.active = false; });
+    var measureAnchors = function () {
+      var vh = window.innerHeight;
+      anchors.forEach(function (a) {
+        var r = a.el.getBoundingClientRect();
+        var top = r.top + window.scrollY;
+        var half = Math.min(r.height, vh) / 2;
+        a.from = top + half;
+        a.to = Math.max(a.from, top + r.height - half);
+      });
+    };
+    measureAnchors();
+    window.addEventListener('resize', measureAnchors);
+    window.addEventListener('load', measureAnchors);
+    if ('ResizeObserver' in window) new ResizeObserver(measureAnchors).observe(document.body);
 
-    tasks.push(function (t) {
-      if (!hs.visible) return;
-      var ctx = hs.ctx;
-      var z = t * 0.00004;
-      var fade = 1 - smooth(0, hs.h * 0.9, window.scrollY); // il campo si dissolve scendendo
-      ctx.clearRect(0, 0, hs.w, hs.h);
-      if (fade <= 0.01) return;
-      var R = 170;
-      var lit = [];
-      for (var i = 0; i < hp.length; i++) {
-        var p = hp[i];
-        curl(p.x * 0.0016, p.y * 0.0016, z, tmp);
-        p.vx = p.vx * 0.9 + tmp[0] * 0.045;
-        p.vy = p.vy * 0.9 + tmp[1] * 0.045;
-        var target = 0;
-        if (mouse.active) {
-          var dx = mouse.x - p.x, dy = mouse.y - p.y;
-          var d = Math.sqrt(dx * dx + dy * dy);
-          if (d < R) {
-            var f = (1 - d / R);
-            // lente: avvicina e fa orbitare i segnali vicini al cursore
-            p.vx += (dx / d) * f * 0.12 - (dy / d) * f * 0.18;
-            p.vy += (dy / d) * f * 0.12 + (dx / d) * f * 0.18;
-            target = f;
-          }
-        }
-        p.lit += (target - p.lit) * 0.08;
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < -20) p.x = hs.w + 20; else if (p.x > hs.w + 20) p.x = -20;
-        if (p.y < -20) p.y = hs.h + 20; else if (p.y > hs.h + 20) p.y = -20;
-        p.trail.push(p.x, p.y);
-        if (p.trail.length > 16) p.trail.splice(0, 2);
-
-        // meno presenza dietro al testo, più verso il bordo destro
-        var zone = 0.3 + 0.7 * smooth(0.25, 0.7, p.x / hs.w);
-        var a = (0.1 + p.lit * 0.55) * zone * fade;
-        var col = p.lit > 0.15 ? mixColor(p.kind, LIVE, p.lit) : p.kind;
-        ctx.strokeStyle = rgb(col, a * 0.8);
-        ctx.lineWidth = p.size * 0.7;
-        ctx.beginPath();
-        var tr = p.trail;
-        for (var k = 0; k < tr.length; k += 2) {
-          if (k === 0) ctx.moveTo(tr[k], tr[k + 1]);
-          else if (Math.abs(tr[k] - tr[k - 2]) < 40 && Math.abs(tr[k + 1] - tr[k - 1]) < 40) ctx.lineTo(tr[k], tr[k + 1]);
-          else ctx.moveTo(tr[k], tr[k + 1]);
-        }
-        ctx.stroke();
-        ctx.fillStyle = rgb(col, Math.min(1, a * 1.6));
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size + p.lit * 1.4, 0, 6.2832);
-        ctx.fill();
-        if (p.lit > 0.3) lit.push(p);
-      }
-      // fili tra i segnali accesi: una conversazione che si accende al passaggio
-      for (var m = 0; m < lit.length; m++) {
-        for (var q = m + 1; q < lit.length; q++) {
-          var ax = lit[m].x - lit[q].x, ay = lit[m].y - lit[q].y;
-          var dd = ax * ax + ay * ay;
-          if (dd < 6400) {
-            ctx.strokeStyle = rgb(GREEN, (1 - dd / 6400) * 0.35 * Math.min(lit[m].lit, lit[q].lit) * fade);
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(lit[m].x, lit[m].y);
-            ctx.lineTo(lit[q].x, lit[q].y);
-            ctx.stroke();
-          }
+    // fotogramma corrente desiderato: si cerca il tratto di pagina in cui cade il centro dello schermo
+    var orbTarget = { w: [1, 0, 0, 0], x: 0.5, y: 0.9, s: 1.3, tilt: -0.4, alpha: 1 };
+    var orbCur = { w: [1, 0, 0, 0], x: 0.5, y: 0.9, s: 1.3, tilt: -0.4, alpha: 0 };
+    var sampleTarget = function () {
+      if (!anchors.length) return;
+      var c = window.scrollY + window.innerHeight / 2;
+      var a = anchors[0], b = anchors[0], t = 0;
+      if (c <= anchors[0].to) { a = b = anchors[0]; }
+      else {
+        for (var i = 0; i < anchors.length; i++) {
+          var A = anchors[i], B = anchors[i + 1];
+          if (c >= A.from && c <= A.to) { a = b = A; break; }
+          if (B && c > A.to && c < B.from) { a = A; b = B; t = smooth(A.to, B.from, c); break; }
+          if (!B) { a = b = A; }
         }
       }
+      for (var k = 0; k < 4; k++) orbTarget.w[k] = lerp(a.w[k], b.w[k], t);
+      orbTarget.x = lerp(a.x, b.x, t); orbTarget.y = lerp(a.y, b.y, t); orbTarget.s = lerp(a.s, b.s, t);
+      orbTarget.tilt = lerp(a.tilt, b.tilt, t); orbTarget.alpha = lerp(a.alpha, b.alpha, t);
+    };
+
+    // forme: ogni punto è (u = anello 0..1, v = angolo lungo l'anello) → x, y, z
+    var shapeAt = function (k, u, v, t, out) {
+      if (k === 0) { // onda: anelli concentrici su un piano che ondeggia
+        var r = 0.14 + 1.8 * u;
+        out[0] = r * Math.cos(v); out[2] = r * Math.sin(v);
+        out[1] = 0.12 * Math.sin(r * 4.2 - t * 1.5) * (0.35 + u);
+      } else if (k === 1) { // globo: paralleli che respirano come un'impronta digitale
+        var lat = (u - 0.5) * Math.PI * 0.94, cl = Math.cos(lat);
+        var wob = 1 + 0.04 * Math.sin(5 * v + 9 * u + t * 1.3);
+        out[0] = cl * Math.cos(v) * wob; out[1] = Math.sin(lat) * wob; out[2] = cl * Math.sin(v) * wob;
+      } else if (k === 2) { // corno: anelli che si allargano lungo un asse
+        var rr = (0.07 + 1.05 * Math.pow(u, 2.2)) * (1 + 0.04 * Math.sin(v * 3 + t * 1.2));
+        var vv = v + t * 0.5;
+        out[0] = -1.3 + 2.6 * u; out[1] = rr * Math.cos(vv); out[2] = rr * Math.sin(vv);
+      } else { // aureola: un anello largo e piatto
+        var R0 = 0.72 + 0.8 * u;
+        out[0] = R0 * Math.cos(v); out[2] = R0 * Math.sin(v);
+        out[1] = 0.06 * Math.sin(6 * v + t * 2 + u * 8);
+      }
+      return out;
+    };
+
+    var mouseT = { x: 0, y: 0 }, mouseC = { x: 0, y: 0 };
+    if (finePointer) {
+      window.addEventListener('pointermove', function (e) {
+        mouseT.x = e.clientX / window.innerWidth - 0.5;
+        mouseT.y = e.clientY / window.innerHeight - 0.5;
+      }, { passive: true });
+    }
+
+    var P = [0, 0, 0], Q = [0, 0, 0], S = [0, 0, 0], tmpP = [0, 0, 0];
+    var BUCKETS = 4;
+    var COLORS = [[200, 242, 255], [110, 210, 255], [55, 150, 255], [40, 95, 225]];
+    var lastOrbT = 0, spin = 0, lastScroll = window.scrollY;
+
+    var drawOrb = function (time, instant) {
+      var dt = lastOrbT ? Math.min(64, time - lastOrbT) : 16;
+      lastOrbT = time;
+      sampleTarget();
+      // inerzia: il fotogramma corrente insegue quello desiderato (≈ 0,2 s)
+      var f = instant ? 1 : 1 - Math.exp(-dt / 210);
+      for (var k = 0; k < 4; k++) orbCur.w[k] += (orbTarget.w[k] - orbCur.w[k]) * f;
+      orbCur.x += (orbTarget.x - orbCur.x) * f; orbCur.y += (orbTarget.y - orbCur.y) * f; orbCur.s += (orbTarget.s - orbCur.s) * f;
+      orbCur.tilt += (orbTarget.tilt - orbCur.tilt) * f; orbCur.alpha += (orbTarget.alpha - orbCur.alpha) * f;
+      mouseC.x += (mouseT.x - mouseC.x) * 0.05; mouseC.y += (mouseT.y - mouseC.y) * 0.05;
+      // lo scroll veloce fa girare la sfera un po' di più
+      var sy = window.scrollY;
+      spin += (sy - lastScroll) * 0.0009;
+      lastScroll = sy;
+
+      var ctx = os.ctx, W = os.w, H = os.h;
+      ctx.clearRect(0, 0, W, H);
+      if (orbCur.alpha < 0.01) return;
+      var t = instant ? 0 : time * 0.001;
+      var R = orbCur.s * Math.min(W, H * 1.3) * 0.42;
+      var cx = orbCur.x * W + mouseC.x * 24, cy = orbCur.y * H + mouseC.y * 16;
+      var wf = orbCur.w[2];
+      var rotY = (t * 0.16 + spin) * (1 - wf * 0.85) - wf * 0.45 + mouseC.x * 0.25;
+      var tilt = orbCur.tilt + mouseC.y * 0.12;
+      var cyR = Math.cos(rotY), syR = Math.sin(rotY), cxR = Math.cos(tilt), sxR = Math.sin(tilt);
+      var dist = 3.4;
+
+      // alone morbido dietro alla forma
+      ctx.globalCompositeOperation = 'lighter';
+      var halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
+      halo.addColorStop(0, 'rgba(47,140,255,' + (0.2 * orbCur.alpha).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(47,140,255,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(cx - R * 1.5, cy - R * 1.5, R * 3, R * 3);
+
+      var paths = [];
+      for (var b0 = 0; b0 < BUCKETS; b0++) paths.push(new Path2D());
+      var project = function (p, out) {
+        var x1 = p[0] * cyR + p[2] * syR, z1 = -p[0] * syR + p[2] * cyR;
+        var y2 = p[1] * cxR - z1 * sxR, z2 = p[1] * sxR + z1 * cxR;
+        var sc = dist / (dist + z2);
+        out[0] = cx + x1 * sc * R; out[1] = cy - y2 * sc * R; out[2] = z2;
+        return out;
+      };
+      var blend = function (u, v, out) {
+        out[0] = out[1] = out[2] = 0;
+        for (var k = 0; k < 4; k++) {
+          var wk = orbCur.w[k];
+          if (wk < 0.002) continue;
+          shapeAt(k, u, v, t, tmpP);
+          out[0] += tmpP[0] * wk; out[1] += tmpP[1] * wk; out[2] += tmpP[2] * wk;
+        }
+        return out;
+      };
+      var dv = 0.075;
+      for (var i = 0; i < RINGS; i++) {
+        var u = i / (RINGS - 1);
+        var off = (i % 2) * (Math.PI / PER);
+        for (var j = 0; j < PER; j++) {
+          var v = (j / PER) * TAU + off;
+          project(blend(u, v, P), S);
+          var x1 = S[0], y1 = S[1], z = S[2];
+          project(blend(u, v + dv, Q), S);
+          if (x1 < -40 && S[0] < -40 || x1 > W + 40 && S[0] > W + 40 || y1 < -40 && S[1] < -40 || y1 > H + 40 && S[1] > H + 40) continue;
+          var bi = clamp(Math.floor((z + 1.4) / 2.8 * BUCKETS), 0, BUCKETS - 1);
+          paths[bi].moveTo(x1, y1);
+          paths[bi].lineTo(S[0], S[1]);
+        }
+      }
+      var lw = clamp(R / 260, 0.7, 1.9);
+      ctx.lineCap = 'round';
+      for (var bk = 0; bk < BUCKETS; bk++) {
+        var col = COLORS[bk];
+        var depthA = [1, 0.78, 0.5, 0.28][bk] * orbCur.alpha;
+        ctx.strokeStyle = rgb(col, 0.16 * depthA);
+        ctx.lineWidth = lw * (3.6 - bk * 0.5);
+        ctx.stroke(paths[bk]);
+        ctx.strokeStyle = rgb(col, 0.9 * depthA);
+        ctx.lineWidth = lw * (1.25 - bk * 0.15);
+        ctx.stroke(paths[bk]);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    };
+
+    if (reduceMotion) {
+      // nessuna animazione: la forma si ridisegna ferma quando si cambia sezione
+      var orbPending = false;
+      var orbStill = function () { orbPending = false; drawOrb(performance.now(), true); };
+      window.addEventListener('scroll', function () { if (!orbPending) { orbPending = true; requestAnimationFrame(orbStill); } }, { passive: true });
+      os.onResize = function () { measureAnchors(); orbStill(); };
+      orbStill();
+    } else {
+      os.onResize = measureAnchors;
+      tasks.push(function (time) { drawOrb(time, false); });
+    }
+  }
+
+  // =====================================================================
+  // 1b. Scorrimento morbido con la rotella (solo mouse, solo landing)
+  //     La pagina scivola verso la posizione desiderata invece di saltare a scatti.
+  //     Tastiera, barra di scorrimento, link interni e touch restano quelli del sistema.
+  // =====================================================================
+  if (finePointer && !reduceMotion && document.body.classList.contains('landing')) {
+    var wheelTarget = window.scrollY, wheelCur = window.scrollY, wheeling = false, wheelLast = 0;
+    var scrollableInPath = function (e) {
+      var path = e.composedPath ? e.composedPath() : [];
+      for (var i = 0; i < path.length; i++) {
+        var el = path[i];
+        if (!el || el === document.body || el === document.documentElement || el === window || el.nodeType !== 1) continue;
+        if (el.scrollHeight > el.clientHeight + 1) {
+          var oy = getComputedStyle(el).overflowY;
+          if (oy === 'auto' || oy === 'scroll') return true;
+        }
+      }
+      return false;
+    };
+    window.addEventListener('wheel', function (e) {
+      if (e.ctrlKey || e.defaultPrevented || Math.abs(e.deltaX) > Math.abs(e.deltaY) || scrollableInPath(e)) return;
+      e.preventDefault();
+      var delta = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
+      if (!wheeling) wheelTarget = wheelCur = window.scrollY;
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      wheelTarget = clamp(wheelTarget + delta, 0, max);
+      wheeling = true;
+      start();
+    }, { passive: false });
+    tasks.push(function (time) {
+      if (!wheeling) { wheelLast = time; return; }
+      // se qualcos'altro ha spostato la pagina (link, tastiera), si lascia fare
+      if (Math.abs(window.scrollY - Math.round(wheelCur)) > 3) { wheeling = false; return; }
+      var dt = wheelLast ? Math.min(64, time - wheelLast) : 16;
+      wheelLast = time;
+      wheelCur += (wheelTarget - wheelCur) * (1 - Math.exp(-dt / 110));
+      if (Math.abs(wheelTarget - wheelCur) < 0.5) { wheelCur = wheelTarget; wheeling = false; }
+      window.scrollTo({ top: wheelCur, behavior: 'instant' });
     });
   }
 
@@ -326,7 +449,7 @@
       window.addEventListener('scroll', function () { if (Math.abs(progress() - lastP) > 0.2) measure(); }, { passive: true });
     }
 
-    var NIGHT_TOP = [11, 22, 32], NIGHT_BOT = [26, 44, 53];
+    var NIGHT_TOP = [2, 6, 16], NIGHT_BOT = [10, 26, 58];
     var DAWN_TOP = [233, 180, 143], DAWN_BOT = [246, 220, 192];
     var DAY_TOP = [246, 244, 239], DAY_BOT = [239, 235, 226];
     var tmp2 = [0, 0];
@@ -403,7 +526,7 @@
         if (s.trail.length > 22) s.trail.splice(0, 2);
 
         var vis = isDay ? 1 : night ? 1 : 0.25;
-        var baseCol = isDay ? GREEN : [255, 238, 205];
+        var baseCol = isDay ? GREEN : [214, 236, 255];
         var col = s.lit > 0.05 ? mixColor(baseCol, isDay ? GREEN : LIVE, s.lit) : baseCol;
         var a = (isDay ? 0.55 : 0.5 + s.lit * 0.4) * vis;
         ctx.strokeStyle = rgb(col, a * 0.5);
@@ -493,9 +616,8 @@
   // =====================================================================
   var scrollEls = Array.prototype.slice.call(document.querySelectorAll('[data-scroll]'));
   var handlers = {
-    steps: function (el, pe) {
-      var items = el.children;
-      for (var i = 0; i < items.length; i++) items[i].classList.toggle('is-on', pe > 0.32 + i * 0.2);
+    step: function (el, pe) {
+      el.classList.toggle('is-on', pe > 0.42);
     },
     type: function (el, pe) {
       var code = el.querySelector('[data-type]');
@@ -562,7 +684,7 @@
     });
   } else {
     // senza animazioni: stato finale, tutto visibile
-    document.querySelectorAll('[data-scroll="steps"] > *').forEach(function (s) { s.classList.add('is-on'); });
+    document.querySelectorAll('[data-scroll="step"]').forEach(function (s) { s.classList.add('is-on'); });
   }
 
   // =====================================================================
@@ -599,8 +721,8 @@
       var target = document.getElementById(a.getAttribute('href').slice(2));
       if (target) byId[target.id] = a;
     });
-    var moveInk = function (a) {
-      links.forEach(function (l) { l.classList.toggle('is-current', l === a); });
+    var moveInk = function (a, hover) {
+      if (!hover) links.forEach(function (l) { l.classList.toggle('is-current', l === a); });
       if (!a) { ink.style.opacity = '0'; return; }
       ink.style.opacity = '1';
       ink.style.width = a.offsetWidth + 'px';
@@ -615,6 +737,8 @@
       moveInk(current ? byId[current] : null);
     }, { rootMargin: '-45% 0px -50% 0px' });
     Object.keys(byId).forEach(function (sid) { spy.observe(document.getElementById(sid)); });
+    links.forEach(function (a) { a.addEventListener('pointerenter', function () { moveInk(a, true); }); });
+    nav.addEventListener('pointerleave', function () { moveInk(current ? byId[current] : null); });
   }
 
   if (tasks.length) start();

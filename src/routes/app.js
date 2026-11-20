@@ -3,6 +3,7 @@ import { config, PLANS } from '../config.js';
 import { flash, loadOwnedWidget, requireUser } from '../auth.js';
 import { fmtDateTime, fmtNum, html, raw, timeAgo } from '../lib/html.js';
 import { HttpError, str } from '../lib/http.js';
+import { realtimeConfigured, realtimeUrl, sealWidgetConversations } from '../lib/realtime.js';
 import { verifyPassword } from '../lib/security.js';
 import { SECTORS } from '../templates.js';
 import * as M from '../models.js';
@@ -26,18 +27,18 @@ const isHttpUrl = (v) => {
 };
 
 // Account su cui si sta lavorando: quello dell'utente, o per l'admin quello del widget aperto.
-function ownAccount(ctx) {
+async function ownAccount(ctx) {
   if (!ctx.user.account_id) return null;
-  return M.getAccount(ctx.user.account_id);
+  return await M.getAccount(ctx.user.account_id);
 }
 
-function requireClientAccount(ctx) {
+async function requireClientAccount(ctx) {
   if (ctx.user.role === 'admin' && !ctx.user.account_id) return ctx.redirect('/admin');
-  if (!ownAccount(ctx)) throw new HttpError(404, 'Account non trovato');
+  if (!await ownAccount(ctx)) throw new HttpError(404, 'Account non trovato');
 }
 
-function widgetPage(ctx, widget, { title, active, body, scripts = '' }) {
-  const account = M.getAccount(widget.account_id);
+async function widgetPage(ctx, widget, { title, active, body, scripts = '' }) {
+  const account = await M.getAccount(widget.account_id);
   const isAdmin = ctx.user.role === 'admin';
   return appLayout(ctx, {
     title,
@@ -61,14 +62,14 @@ export function parseDomains(input) {
 
 export function registerApp(router) {
   // ---------- Panoramica ----------
-  router.get('/app', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
+  router.get('/app', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
     const plan = PLANS[account.plan];
-    const widgets = M.listWidgets(account.id);
-    const used = M.accountConversationsThisMonth(account.id);
-    const daily = M.dailyConversations(widgets.map((w) => w.id), 30);
-    const leads = M.listLeads({ accountId: account.id, limit: 5 }).filter((l) => !l.is_test);
-    const newLeads = M.listLeads({ accountId: account.id, status: 'new' }).filter((l) => !l.is_test).length;
+    const widgets = await M.listWidgets(account.id);
+    const used = await M.accountConversationsThisMonth(account.id);
+    const daily = await M.dailyConversations(widgets.map((w) => w.id), 30);
+    const leads = (await M.listLeads({ accountId: account.id, limit: 5 })).filter((l) => !l.is_test);
+    const newLeads = (await M.listLeads({ accountId: account.id, status: 'new' })).filter((l) => !l.is_test).length;
 
     const body = widgets.length
       ? html`
@@ -107,9 +108,9 @@ export function registerApp(router) {
   });
 
   // ---------- Elenco e creazione ----------
-  router.get('/app/widgets', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
-    const widgets = M.listWidgets(account.id);
+  router.get('/app/widgets', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
+    const widgets = await M.listWidgets(account.id);
     const plan = PLANS[account.plan];
     const body = widgets.length
       ? html`<div class="table-wrap"><table class="table">
@@ -129,20 +130,20 @@ export function registerApp(router) {
     }));
   });
 
-  router.get('/app/widgets/new', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
+  router.get('/app/widgets/new', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
     const plan = PLANS[account.plan];
-    const limitReached = M.countWidgets(account.id) >= plan.widgets;
+    const limitReached = await M.countWidgets(account.id) >= plan.widgets;
     ctx.html(appLayout(ctx, {
       title: 'Nuovo assistente', active: 'widgets', account,
       body: newWidgetPage(ctx, { values: { sector: account.sector }, limitReached, plan, first: ctx.query.primo === '1' }),
     }));
   });
 
-  router.post('/app/widgets', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
+  router.post('/app/widgets', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
     const plan = PLANS[account.plan];
-    if (M.countWidgets(account.id) >= plan.widgets) throw new HttpError(403, 'Hai raggiunto il numero di assistenti incluso nel tuo piano.');
+    if (await M.countWidgets(account.id) >= plan.widgets) throw new HttpError(403, 'Hai raggiunto il numero di assistenti incluso nel tuo piano.');
     const values = {
       name: str(ctx.body.name, 80),
       siteUrl: str(ctx.body.siteUrl, 300),
@@ -155,7 +156,7 @@ export function registerApp(router) {
     if (Object.keys(errors).length) {
       return ctx.html(appLayout(ctx, { title: 'Nuovo assistente', active: 'widgets', account, body: newWidgetPage(ctx, { values, errors, plan }) }), 422);
     }
-    const widget = M.createWidget({ accountId: account.id, ...values });
+    const widget = await M.createWidget({ accountId: account.id, ...values });
     flash(ctx, values.withTemplate
       ? 'Assistente creato con le domande del tuo settore. Sostituisci le parti tra [parentesi] con i tuoi dati.'
       : 'Assistente creato. Aggiungi le prime risposte.');
@@ -163,34 +164,34 @@ export function registerApp(router) {
   });
 
   // ---------- Pagine del singolo assistente ----------
-  router.get('/app/widgets/:id', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.get('/app/widgets/:id', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     const body = widgetOverview(ctx, {
       widget,
-      stats: M.widgetStats(widget.id),
-      knowledge: M.listKnowledge(widget.id),
-      unanswered: M.unansweredQuestions(widget.id),
+      stats: await M.widgetStats(widget.id),
+      knowledge: await M.listKnowledge(widget.id),
+      unanswered: await M.unansweredQuestions(widget.id),
     });
-    ctx.html(widgetPage(ctx, widget, { title: widget.name, active: '', body }));
+    ctx.html(await widgetPage(ctx, widget, { title: widget.name, active: '', body }));
   });
 
-  router.post('/app/widgets/:id/stato', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.post('/app/widgets/:id/stato', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     const status = ctx.body.status === 'paused' ? 'paused' : 'active';
-    M.updateWidget(widget.id, { status });
+    await M.updateWidget(widget.id, { status });
     flash(ctx, status === 'paused' ? 'Assistente in pausa: non compare più sul sito.' : 'Assistente riattivato.');
     ctx.redirect(`/app/widgets/${widget.id}`);
   });
 
-  router.get('/app/widgets/:id/risposte', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.get('/app/widgets/:id/risposte', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     const body = knowledgePage(ctx, {
       widget,
-      knowledge: M.listKnowledge(widget.id),
-      unanswered: M.unansweredQuestions(widget.id),
+      knowledge: await M.listKnowledge(widget.id),
+      unanswered: await M.unansweredQuestions(widget.id),
       prefill: str(ctx.query.q, 300),
     });
-    ctx.html(widgetPage(ctx, widget, { title: widget.name, active: '/risposte', body, scripts: previewScript(widget) }));
+    ctx.html(await widgetPage(ctx, widget, { title: widget.name, active: '/risposte', body, scripts: previewScript(widget) }));
   });
 
   const readKnowledge = (ctx) => {
@@ -199,45 +200,45 @@ export function registerApp(router) {
     return v;
   };
 
-  router.post('/app/widgets/:id/risposte', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    if (M.listKnowledge(widget.id).length >= 500) throw new HttpError(422, 'Hai raggiunto il massimo di 500 risposte per assistente.');
-    M.addKnowledge(widget.id, readKnowledge(ctx));
+  router.post('/app/widgets/:id/risposte', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    if ((await M.listKnowledge(widget.id)).length >= 500) throw new HttpError(422, 'Hai raggiunto il massimo di 500 risposte per assistente.');
+    await M.addKnowledge(widget.id, readKnowledge(ctx));
     flash(ctx, 'Risposta aggiunta. Puoi provarla subito nell’assistente qui a destra.');
     ctx.redirect(`/app/widgets/${widget.id}/risposte`);
   });
 
-  const loadKnowledge = (ctx, widget) => {
-    const k = M.getKnowledge(Number(ctx.params.kid));
+  const loadKnowledge = async (ctx, widget) => {
+    const k = await M.getKnowledge(Number(ctx.params.kid));
     if (!k || k.widget_id !== widget.id) throw new HttpError(404, 'Risposta non trovata');
     return k;
   };
 
-  router.post('/app/widgets/:id/risposte/:kid', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    const k = loadKnowledge(ctx, widget);
-    M.updateKnowledge(k.id, readKnowledge(ctx));
+  router.post('/app/widgets/:id/risposte/:kid', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    const k = await loadKnowledge(ctx, widget);
+    await M.updateKnowledge(k.id, readKnowledge(ctx));
     flash(ctx, 'Risposta salvata.');
     ctx.redirect(`/app/widgets/${widget.id}/risposte`);
   });
 
-  router.post('/app/widgets/:id/risposte/:kid/elimina', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    const k = loadKnowledge(ctx, widget);
-    M.deleteKnowledge(k.id);
+  router.post('/app/widgets/:id/risposte/:kid/elimina', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    const k = await loadKnowledge(ctx, widget);
+    await M.deleteKnowledge(k.id);
     flash(ctx, 'Risposta eliminata.');
     ctx.redirect(`/app/widgets/${widget.id}/risposte`);
   });
 
-  router.get('/app/widgets/:id/aspetto', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    const account = M.getAccount(widget.account_id);
-    ctx.html(widgetPage(ctx, widget, { title: widget.name, active: '/aspetto', body: appearancePage(ctx, { widget, account }), scripts: previewScript(widget) }));
+  router.get('/app/widgets/:id/aspetto', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    const account = await M.getAccount(widget.account_id);
+    ctx.html(await widgetPage(ctx, widget, { title: widget.name, active: '/aspetto', body: appearancePage(ctx, { widget, account }), scripts: previewScript(widget) }));
   });
 
-  router.post('/app/widgets/:id/aspetto', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    const account = M.getAccount(widget.account_id);
+  router.post('/app/widgets/:id/aspetto', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    const account = await M.getAccount(widget.account_id);
     const b = ctx.body;
     const settings = {
       title: str(b.title, 60),
@@ -253,6 +254,8 @@ export function registerApp(router) {
       askPhone: b.askPhone === '1',
       privacyUrl: str(b.privacyUrl, 300),
       showBranding: PLANS[account.plan].branding ? true : b.showBranding === '1',
+      // il campo compare solo se l'AI è configurata: altrimenti si conserva la scelta precedente
+      engine: b.engine === 'ai' || b.engine === 'faq' ? b.engine : (widget.settings.engine || 'faq'),
     };
     const name = str(b.name, 80);
     const problems = [];
@@ -265,71 +268,84 @@ export function registerApp(router) {
       flash(ctx, `Modifiche non salvate: manca ${problems.join(', ')}.`, 'error');
       return ctx.redirect(`/app/widgets/${widget.id}/aspetto`);
     }
-    M.updateWidget(widget.id, { name, settings });
+    await M.updateWidget(widget.id, { name, settings });
     flash(ctx, 'Modifiche salvate. Sono già attive sul sito.');
     ctx.redirect(`/app/widgets/${widget.id}/aspetto`);
   });
 
-  router.get('/app/widgets/:id/installazione', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    ctx.html(widgetPage(ctx, widget, { title: widget.name, active: '/installazione', body: installPage(ctx, { widget }) }));
+  router.get('/app/widgets/:id/installazione', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    ctx.html(await widgetPage(ctx, widget, { title: widget.name, active: '/installazione', body: installPage(ctx, { widget }) }));
   });
 
-  router.post('/app/widgets/:id/installazione', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.post('/app/widgets/:id/installazione', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     const siteUrl = str(ctx.body.siteUrl, 300);
     if (siteUrl && !isHttpUrl(siteUrl)) {
       flash(ctx, 'Indirizzo del sito non valido: scrivilo completo, es. https://www.tuosito.it', 'error');
       return ctx.redirect(`/app/widgets/${widget.id}/installazione`);
     }
     const domains = parseDomains(ctx.body.allowedDomains);
-    M.updateWidget(widget.id, { siteUrl, allowedDomains: domains });
+    await M.updateWidget(widget.id, { siteUrl, allowedDomains: domains });
     flash(ctx, domains.length ? `Salvato. L’assistente risponde solo su: ${domains.join(', ')}.` : 'Salvato. Nessun dominio indicato: l’assistente funziona su qualsiasi sito.');
     ctx.redirect(`/app/widgets/${widget.id}/installazione`);
   });
 
-  router.get('/app/widgets/:id/conversazioni', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.get('/app/widgets/:id/conversazioni', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     const filter = ['unanswered', 'leads'].includes(ctx.query.filtro) ? ctx.query.filtro : 'all';
     const showTest = ctx.query.prove === '1';
-    const conversations = M.listConversations(widget.id, { filter, includeTest: showTest });
-    ctx.html(widgetPage(ctx, widget, { title: widget.name, active: '/conversazioni', body: conversationsPage({ widget, conversations, filter, showTest }) }));
+    const conversations = await M.listConversations(widget.id, { filter, includeTest: showTest });
+    const live = realtimeConfigured() ? { url: realtimeUrl(), endpoint: `/api/app/widgets/${widget.id}/live` } : null;
+    ctx.html(await widgetPage(ctx, widget, {
+      title: widget.name, active: '/conversazioni',
+      body: conversationsPage({ widget, conversations, filter, showTest, live }),
+      scripts: live ? raw('<script src="/static/js/live.js" defer></script>') : '',
+    }));
   });
 
-  router.get('/app/widgets/:id/conversazioni/:cid', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
-    const conversation = M.getConversation(widget.id, ctx.params.cid);
+  // Capability Realtime per la lista conversazioni: richiede sessione + CSRF (verificati in server.js
+  // per tutte le POST su /api/app/) e la proprietà dell'assistente. Scade da sola: il browser la rinnova qui.
+  router.post('/api/app/widgets/:id/live', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    if (!realtimeConfigured()) throw new HttpError(404, 'Aggiornamenti in tempo reale non attivi');
+    ctx.json(await sealWidgetConversations(widget.id));
+  });
+
+  router.get('/app/widgets/:id/conversazioni/:cid', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
+    const conversation = await M.getConversation(widget.id, ctx.params.cid);
     if (!conversation) throw new HttpError(404, 'Conversazione non trovata');
-    const messages = M.listMessages(conversation.id);
+    const messages = await M.listMessages(conversation.id);
     let lastQuestion = '';
     for (const m of messages) {
       if (m.role === 'visitor') lastQuestion = m.body;
       else m.prevQuestion = lastQuestion;
     }
-    const knowledgeById = Object.fromEntries(M.listKnowledge(widget.id).map((k) => [k.id, k]));
-    const lead = M.listLeads({ widgetId: widget.id }).find((l) => l.conversation_id === conversation.id);
-    ctx.html(widgetPage(ctx, widget, {
+    const knowledgeById = Object.fromEntries((await M.listKnowledge(widget.id)).map((k) => [k.id, k]));
+    const lead = (await M.listLeads({ widgetId: widget.id })).find((l) => l.conversation_id === conversation.id);
+    ctx.html(await widgetPage(ctx, widget, {
       title: widget.name, active: '/conversazioni',
       body: conversationDetail({ widget, conversation, messages, knowledgeById, lead }),
     }));
   });
 
-  router.post('/app/widgets/:id/elimina', requireUser, (ctx) => {
-    const widget = loadOwnedWidget(ctx, ctx.params.id);
+  router.post('/app/widgets/:id/elimina', requireUser, async (ctx) => {
+    const widget = await loadOwnedWidget(ctx, ctx.params.id);
     if (str(ctx.body.confirm) !== widget.name) {
       flash(ctx, 'Per eliminare l’assistente scrivi esattamente il suo nome.', 'error');
       return ctx.redirect(`/app/widgets/${widget.id}`);
     }
-    M.deleteWidget(widget.id);
+    await M.deleteWidget(widget.id);
     flash(ctx, `Assistente “${widget.name}” eliminato.`);
     ctx.redirect(ctx.user.role === 'admin' ? `/admin/accounts/${widget.account_id}` : '/app/widgets');
   });
 
   // ---------- Contatti ----------
-  router.get('/app/leads', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
+  router.get('/app/leads', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
     const status = ['new', 'contacted', 'closed'].includes(ctx.query.stato) ? ctx.query.stato : '';
-    const leads = M.listLeads({ accountId: account.id, status }).filter((l) => ctx.query.prove === '1' || !l.is_test);
+    const leads = (await M.listLeads({ accountId: account.id, status })).filter((l) => ctx.query.prove === '1' || !l.is_test);
     const filters = [['', 'Tutti'], ['new', 'Da richiamare'], ['contacted', 'Contattati'], ['closed', 'Chiusi']];
     const body = html`
       <div class="toolbar">
@@ -342,28 +358,28 @@ export function registerApp(router) {
     ctx.html(appLayout(ctx, { title: 'Contatti raccolti', active: 'leads', account, body }));
   });
 
-  router.get('/app/leads.csv', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
-    const leads = M.listLeads({ accountId: account.id }).filter((l) => !l.is_test);
+  router.get('/app/leads.csv', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
+    const leads = (await M.listLeads({ accountId: account.id })).filter((l) => !l.is_test);
     ctx.text(leadsCsv(leads), 200, 'text/csv; charset=utf-8', {
       'Content-Disposition': `attachment; filename="contatti-${new Date().toISOString().slice(0, 10)}.csv"`,
     });
   });
 
-  router.post('/app/leads/:lid/stato', requireUser, (ctx) => {
-    const lead = M.getLead(Number(ctx.params.lid));
+  router.post('/app/leads/:lid/stato', requireUser, async (ctx) => {
+    const lead = await M.getLead(Number(ctx.params.lid));
     if (!lead || (ctx.user.role !== 'admin' && lead.account_id !== ctx.user.account_id)) throw new HttpError(404, 'Contatto non trovato');
     const status = ['new', 'contacted', 'closed'].includes(ctx.body.status) ? ctx.body.status : 'new';
-    M.setLeadStatus(lead.id, status);
+    await M.setLeadStatus(lead.id, status);
     flash(ctx, `Contatto segnato come “${leadStatusLabel(status).toLowerCase()}”.`);
     const back = str(ctx.body.returnTo, 300);
     ctx.redirect(/^\/(app|admin)\//.test(back) ? back : '/app/leads');
   });
 
   // ---------- Account ----------
-  router.get('/app/account', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
-    const used = M.accountConversationsThisMonth(account.id);
+  router.get('/app/account', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
+    const used = await M.accountConversationsThisMonth(account.id);
     const body = html`
       <div class="grid-main-side">
         <div class="stack-lg">
@@ -408,21 +424,21 @@ export function registerApp(router) {
     ctx.html(appLayout(ctx, { title: 'Account e piano', active: 'account', account, body }));
   });
 
-  router.post('/app/account', requireUser, requireClientAccount, (ctx) => {
-    const account = ownAccount(ctx);
+  router.post('/app/account', requireUser, requireClientAccount, async (ctx) => {
+    const account = await ownAccount(ctx);
     const company = str(ctx.body.company, 120);
     const name = str(ctx.body.name, 120);
     if (!company || !name) {
       flash(ctx, 'Nome dell’attività e nome sono obbligatori.', 'error');
       return ctx.redirect('/app/account');
     }
-    M.updateAccount(account.id, { name: company });
-    M.updateUserName(ctx.user.id, name);
+    await M.updateAccount(account.id, { name: company });
+    await M.updateUserName(ctx.user.id, name);
     flash(ctx, 'Dati aggiornati.');
     ctx.redirect('/app/account');
   });
 
-  router.post('/app/account/password', requireUser, requireClientAccount, (ctx) => {
+  router.post('/app/account/password', requireUser, requireClientAccount, async (ctx) => {
     const current = typeof ctx.body.current === 'string' ? ctx.body.current : '';
     const password = typeof ctx.body.password === 'string' ? ctx.body.password : '';
     if (!verifyPassword(current, ctx.user.password_hash)) {
@@ -433,13 +449,13 @@ export function registerApp(router) {
       flash(ctx, 'La nuova password deve avere almeno 10 caratteri.', 'error');
       return ctx.redirect('/app/account');
     }
-    M.setPassword(ctx.user.id, password);
+    await M.setPassword(ctx.user.id, password);
     flash(ctx, 'Password aggiornata.');
     ctx.redirect('/app/account');
   });
 
   // ---------- Plugin WordPress (generato al volo dai sorgenti nel repository) ----------
-  router.get('/download/aperto-wordpress.zip', (ctx) => {
+  router.get('/download/aperto-wordpress.zip', async (ctx) => {
     const zip = buildPluginZip();
     ctx.res.setHeader('Content-Disposition', 'attachment; filename="aperto-wordpress.zip"');
     ctx.res.setHeader('Content-Length', zip.length);

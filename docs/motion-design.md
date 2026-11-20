@@ -1,66 +1,95 @@
-# Motion design della landing — "Segnali notturni"
+# Motion design della landing — "Notte elettrica"
 
-Filosofia algoritmica alla base delle animazioni generate in codice (canvas, nessun video esterno).
+Linguaggio visivo e di movimento della landing (tutto generato in codice: nessuna libreria, nessun video esterno).
 
-## Il movimento
+## L'idea
 
-**Segnali notturni.** Ogni domanda che arriva a un sito è un piccolo segnale luminoso che attraversa il buio: parte da un punto qualsiasi, esita, devia, cerca. Il sistema non disegna oggetti, disegna *intenzioni in viaggio*. Una domanda senza risposta vaga lungo un campo di flusso generato da rumore simplex, una corrente invisibile che cambia lentamente nel tempo; una domanda che trova risposta si accende di verde e smette di vagare, perché ha trovato il suo posto.
+**Un solo oggetto che accompagna il visitatore.** Una forma fatta di anelli di trattini luminosi attraversa
+tutta la pagina: nasce come un'onda sotto la demo, si chiude in un globo dietro le regole europee, si allunga
+in un corno accanto ai modelli di settore e diventa un'aureola sopra i prezzi. Non è decorazione: è il
+segnale dell'assistente, sempre acceso, che cambia forma ma resta lo stesso dall'inizio alla fine.
 
-Il campo è costruito con un rumore a più ottave da cui si ricava il *curl*: i segnali non si ammassano e non si disperdono, scorrono come fumo in una stanza chiusa. La deviazione dipende dalla distanza dalla meta: lontano domina la corrente, vicino domina l'attrazione. È un algoritmo calibrato con pazienza, in cui ogni costante (scala del rumore, attrito, raggio di cattura) è stata scelta perché il moto sembri cercato e non casuale.
+Intorno, tutto è sobrio: fondo nero, testo bianco sottile (DM Sans 200–400 con spaziatura stretta),
+superfici di vetro sfocato e un solo colore vivo, il blu elettrico.
 
-Il tempo non scorre da solo: lo guida lo scroll. La notte è il luogo dell'attesa, con stelle che tremolano a frequenze diverse e una luna che si spegne all'alba; il mattino è il luogo del raccolto, con un sole che sale lungo un arco e i segnali verdi che confluiscono verso il telefono del titolare. Il cielo è un'interpolazione continua tra palette notte, alba e giorno, così che tornare indietro con lo scroll riavvolga davvero la notte.
+## Palette
 
-La casualità è sempre seminata. Il seme è **2240**, l'ora in cui nessuno risponde: stesso seme, stessa notte, a ogni visita. Chi conosce il prodotto riconosce nel numero la promessa; gli altri vedono solo una costellazione ben composta.
+| Token | Valore | Uso |
+| --- | --- | --- |
+| `--bg` | `#000` | fondo |
+| `--text` / `--text-2` / `--muted` | bianco al 100 / 74 / 50 % | testi |
+| `--glass`, `--line` | bianco al 5,5 % / 10 % | superfici di vetro e bordi |
+| `--accent` | `#2f8cff` | blu elettrico: luci, piano consigliato |
+| `--accent-2` | `#5ce1ff` | ciano: dettagli accesi, impulsi, puntatori |
+| `--violet` | `#7c5cff` | solo nelle sfumature (logo, aurora) |
 
-L'interazione è discreta: nell'hero il cursore agisce come una lente che accelera e accende i segnali vicini, legandoli con fili sottili, come una conversazione che si accende al passaggio. Nessun effetto è decorativo fine a se stesso: tutto racconta il passaggio da domanda a risposta a contatto, con l'artigianalità di un sistema rifinito iterazione dopo iterazione.
+La chat demo resta bianca: è il widget vero, come appare sul sito del cliente. Il racconto "Una notte"
+passa dalla notte blu all'alba chiara: i toni del giorno sono definiti solo dentro quella sezione.
 
 ## Sistema di movimento
 
-Tutte le animazioni del sito seguono le stesse regole (variabili in `public/css/site.css`):
+Variabili in `public/css/site.css`:
 
 | Elemento | Valore | Uso |
 | --- | --- | --- |
 | Durate | 180 / 320 / 550 / 900 / 1300 ms | stati, micro-interazioni, componenti, comparse, titoli |
 | Curva "out" | `cubic-bezier(.16, 1, .3, 1)` | tutto ciò che entra |
-| Curva "in-out" | `cubic-bezier(.65, 0, .35, 1)` | passaggi tra due stati |
-| Curva "spring" | `cubic-bezier(.34, 1.4, .64, 1)` | elementi che "arrivano" (notifiche, numeri dei passaggi) |
+| Curva "in-out" | `cubic-bezier(.65, 0, .35, 1)` | passaggi tra due stati, sipario |
+| Molla `--spring` | `linear(…)` con leggero superamento | comparse, pulsanti, pillola del menu, foglio mobile |
 | Ritmo | 70 ms tra elementi, 45 ms tra parole | sequenze |
 | Scroll | nessuna transizione | gli effetti seguono il dito e si riavvolgono |
 
+### La sfera di particelle (`[data-orb-canvas]`)
+
+Ogni sezione dichiara un fotogramma chiave: `data-orb="forma x y scala inclinazione opacità"`
+(forme: `wave`, `sphere`, `funnel`, `ring`; x e y in frazioni dello schermo). Il motore trova il tratto
+di pagina in cui cade il centro dello schermo, fonde forma e valori tra le due sezioni vicine e li insegue
+con un'inerzia di circa 0,2 s. Ogni punto è definito da (anello, angolo) in tutte le forme, quindi il
+passaggio da una forma all'altra è una vera trasformazione, non una dissolvenza. Il trattino di ogni punto
+segue la tangente dell'anello; i trattini sono divisi in 4 fasce di profondità (vicini più chiari e spessi)
+e disegnati due volte: un alone largo e tenue e una linea sottile, in somma additiva.
+Anche la velocità dello scroll e il mouse la fanno ruotare leggermente.
+
 ### Motore di scroll
 
-Ogni elemento con `data-scroll` riceve dal motore (in `public/js/motion.js`) quattro valori aggiornati a ogni fotogramma:
-`--pe` (entrata), `--p` (passaggio), `--px` (uscita), `--pp` (avanzamento mentre la sezione è fissata). Il CSS li usa direttamente.
-Senza JavaScript o con "riduci movimento" i valori restano quelli finali: la pagina è completa e ferma.
+Ogni elemento con `data-scroll` riceve a ogni fotogramma `--pe` (entrata), `--p` (passaggio),
+`--px` (uscita) e `--pp` (avanzamento in una sezione fissata). Il CSS li usa direttamente.
 
 ### Coreografia per sezione
 
-| Sezione | Effetto legato allo scroll |
+| Sezione | Movimento |
 | --- | --- |
-| Hero | il testo sale e sfuma, la demo arretra; campo generativo che reagisce al cursore |
-| Dichiarazione | sezione fissata, il testo si accende parola per parola; video "aurora" con zoom lento |
-| Piattaforme | la fascia accelera e si inclina con la velocità dello scroll |
-| Una notte | racconto fissato: cielo, orologio, chat e telefono guidati dallo scroll |
-| Come funziona | linea che si disegna, passaggi che si accendono, codice che si scrive; video "flusso" in parallasse |
-| Settori | colonne a velocità diverse |
-| Regole europee | titolo fermo mentre i punti scorrono, spunte che si disegnano |
+| Caricamento | percentuale 0→100 % (contatore CSS animato) e sipario che sale; poi parte l'hero |
+| Testata | menu a pillola di vetro: la pillola chiara scorre sotto la voce in lettura e segue il mouse |
+| Hero | parole che salgono da dietro una linea, gradiente che scorre nella frase in evidenza; scorrendo il testo sfuma e la demo si raddrizza dall'inclinazione 3D; onda di particelle sotto la demo |
+| Piattaforme | fila di nomi che accelera e si inclina con la velocità dello scroll |
+| Il tuo sito, sempre aperto | schede di vetro con disco bianco che ruota al passaggio; globo piccolo in alto |
+| Dichiarazione | sezione fissata, parole che si accendono una a una; video "aurora" |
+| Una notte | cielo, orologio, chat e telefono guidati dallo scroll, dalla notte all'alba |
+| Come funziona | righe alternate: testo e disegno salgono quando la riga entra, le linee del disegno si tracciano con lo scroll, impulsi luminosi viaggiano sui fili, il puntatore va sulla tessera accesa, il codice si scrive da solo |
+| Regole europee | griglia bento: circuito con impulsi, piattaforme in orbita, tasto acceso, globo a puntini con luoghi che pulsano; globo grande di particelle dietro |
+| Settori | colonne a velocità diverse; corno di particelle a sinistra; numeri che contano |
 | Agenzie | la sezione si apre da scheda arrotondata a tutto schermo; video "rete" |
-| Prezzi | i piani si alzano in 3D uno dopo l'altro |
-| Chiamata finale | il titolo si accende con lo scroll; video "onde" |
-| Menu | indicatore che segue la sezione in lettura |
+| Prezzi | piani che si alzano in 3D uno dopo l'altro, bordo luminoso che gira attorno al piano consigliato; aureola di particelle in alto |
+| Domande | apertura fluida delle risposte, icona che ruota a molla |
+| Chiamata finale | titolo che si accende parola per parola; video "onde" e onda di particelle |
+| Menu mobile | foglio di vetro che sale dal basso, voci a cascata, sfondo sfocato |
+| Ovunque | luce che segue il cursore sulle schede, freccia dei pulsanti che ruota di 45°, riflesso sui pulsanti bianchi, pulsanti magnetici, scorrimento morbido con la rotella |
 
 ## Video
 
-I quattro video (`public/media/*.webm`, ~650–800 KB ciascuno, 1280×720, ciclo perfetto di 8–10 s) sono generati in codice:
-le scene sono in `scripts/video-scenes.html`, la registrazione con `npm run videos` (Chrome in background + MediaRecorder).
-Ogni scena è periodica sulla sua durata, quindi il ciclo non ha scatti. Accanto a ogni video c'è un'immagine `.jpg`
-del primo fotogramma, usata come anteprima e come sostituto con "riduci movimento" o dove l'autoplay è bloccato.
-I video si caricano solo quando stanno per entrare nello schermo e si fermano quando escono.
+I quattro video (`public/media/*.webm`, ~650–750 KB, 1280×720, ciclo perfetto di 8–10 s) sono generati in
+codice con la palette blu: le scene sono in `scripts/video-scenes.html`, la registrazione con `npm run videos`.
+Accanto a ogni video c'è il primo fotogramma `.jpg`. Si caricano solo quando stanno per entrare nello schermo.
 
 ## Regole tecniche
 
-- Un solo ciclo `requestAnimationFrame`, sospeso quando il canvas non è visibile o la scheda è in background.
-- Densità di pixel limitata (max 1,75) e numero di particelle proporzionale all'area: fluido anche su telefoni economici.
-- Solo `transform` e `opacity` sugli elementi della pagina.
-- Con "riduci movimento" attivo: nessun canvas animato, la sezione a scroll mostra direttamente lo stato finale.
-- Implementazione: `public/js/motion.js`.
+- Un solo ciclo `requestAnimationFrame` per tutta la pagina, fermo quando la scheda è in background.
+- Sfera: 46×60 punti (30×40 su telefono), densità di pixel limitata a 1,75; ~3 ms a fotogramma.
+- Scorrimento morbido solo con mouse e rotella: tastiera, barra, link interni e touch restano quelli del
+  sistema; gli elementi che scorrono da soli (chat del widget) ricevono la rotella normalmente.
+- Sugli elementi della pagina solo `transform`, `opacity` e `filter`.
+- Con "riduci movimento": niente caricamento, niente scorrimento morbido, la sfera resta ferma e si
+  ridisegna solo cambiando sezione, il racconto mostra lo stato finale, i disegni sono già completi.
+- Font DM Sans ospitato in `public/fonts` (licenza SIL OFL 1.1 accanto al file): nessuna richiesta esterna.
+- Implementazione: `public/js/motion.js`, `public/js/site.js`, `public/css/site.css`.

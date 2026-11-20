@@ -1,13 +1,20 @@
-// Database SQLite integrato in Node (node:sqlite): nessuna dipendenza esterna.
-// In produzione si può sostituire con PostgreSQL mantenendo le stesse funzioni in models.js.
+// Livello dati con due motori dietro la stessa interfaccia asincrona:
+//  - Neon Postgres quando DATABASE_URL è impostata (produzione, Vercel)
+//  - SQLite integrato in Node (node:sqlite) in locale e nei test, senza servizi esterni
+// Le query si scrivono una volta sola, con segnaposto "?" e datetime('now'):
+// per Postgres vengono tradotte in $1, $2… e nell'orario UTC equivalente.
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { config } from './config.js';
 
-let db;
+export const dialect = process.env.DATABASE_URL ? 'postgres' : 'sqlite';
 
-const SCHEMA = `
+// Le date restano testo 'YYYY-MM-DD HH:MM:SS' in UTC su entrambi i motori:
+// stessi confronti, stessi formati, nessuna sorpresa con i fusi orari.
+const PG_NOW = "to_char(now() at time zone 'utc', 'YYYY-MM-DD HH24:MI:SS')";
+
+const SQLITE_SCHEMA = `
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -21,7 +28,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_by    TEXT NOT NULL DEFAULT 'self',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY,
   email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -32,7 +38,6 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash       TEXT PRIMARY KEY,
   user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -40,7 +45,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at       TEXT NOT NULL,
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS invites (
   token_hash  TEXT PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -48,7 +52,6 @@ CREATE TABLE IF NOT EXISTS invites (
   used_at     TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS widgets (
   id              INTEGER PRIMARY KEY,
   public_id       TEXT NOT NULL UNIQUE,
@@ -63,7 +66,6 @@ CREATE TABLE IF NOT EXISTS widgets (
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS knowledge (
   id          INTEGER PRIMARY KEY,
   widget_id   INTEGER NOT NULL REFERENCES widgets(id) ON DELETE CASCADE,
@@ -74,7 +76,6 @@ CREATE TABLE IF NOT EXISTS knowledge (
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS conversations (
   id            INTEGER PRIMARY KEY,
   public_id     TEXT NOT NULL UNIQUE,
@@ -88,7 +89,6 @@ CREATE TABLE IF NOT EXISTS conversations (
   started_at    TEXT NOT NULL DEFAULT (datetime('now')),
   last_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -98,7 +98,6 @@ CREATE TABLE IF NOT EXISTS messages (
   outcome         TEXT NOT NULL DEFAULT '',
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE TABLE IF NOT EXISTS leads (
   id              INTEGER PRIMARY KEY,
   widget_id       INTEGER NOT NULL REFERENCES widgets(id) ON DELETE CASCADE,
@@ -111,7 +110,6 @@ CREATE TABLE IF NOT EXISTS leads (
   is_test         INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE INDEX IF NOT EXISTS idx_widgets_account ON widgets(account_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_widget ON knowledge(widget_id);
 CREATE INDEX IF NOT EXISTS idx_conv_widget ON conversations(widget_id, started_at);
@@ -120,43 +118,121 @@ CREATE INDEX IF NOT EXISTS idx_leads_widget ON leads(widget_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
-export function openDb(file = config.dbPath) {
-  if (db) return db;
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL;');
-  db.exec(SCHEMA);
-  return db;
+let sqlite;
+let pool;
+const txStore = new AsyncLocalStorage();
+
+// ---------------- Apertura ----------------
+export async function openDb() {
+  if (dialect === 'postgres') {
+    if (pool) return;
+    const pg = (await import('pg')).default;
+    // COUNT/SUM arrivano da Postgres come testo (int8/numeric): li riportiamo a numeri.
+    pg.types.setTypeParser(20, (v) => Number.parseInt(v, 10));
+    pg.types.setTypeParser(1700, (v) => Number.parseFloat(v));
+    pool = new pg.Pool({
+      // Connessione "pooled" (PgBouncer) per il traffico dell'app, come raccomanda Neon.
+      // verify-full mantiene i controlli TLS di sslmode=require ed evita l'avviso del driver.
+      connectionString: process.env.DATABASE_URL.replace('sslmode=require', 'sslmode=verify-full'),
+      max: config.onVercel ? 5 : 10,
+      idleTimeoutMillis: 30_000,
+    });
+    // Un errore su una connessione inattiva (es. compute sospeso per inattività) non deve far cadere l'app.
+    pool.on('error', (err) => console.error('[db] connessione inattiva chiusa:', err.message));
+    if (config.onVercel) {
+      // Vercel Fluid compute: chiude le connessioni inattive prima che la funzione venga sospesa.
+      const { attachDatabasePool } = await import('@vercel/functions');
+      attachDatabasePool(pool);
+    }
+    return;
+  }
+  if (sqlite) return;
+  const { DatabaseSync } = await import('node:sqlite');
+  if (config.dbPath !== ':memory:') fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
+  sqlite = new DatabaseSync(config.dbPath);
+  sqlite.exec('PRAGMA journal_mode = WAL;');
+  sqlite.exec(SQLITE_SCHEMA);
 }
 
-export function getDb() {
-  if (!db) openDb();
-  return db;
+export async function closeDb() {
+  if (pool) await pool.end();
+  if (sqlite) sqlite.close();
+  pool = undefined;
+  sqlite = undefined;
 }
 
-export function closeDb() {
-  if (db) db.close();
-  db = undefined;
+// ---------------- Esecuzione ----------------
+const toPg = (sql) => {
+  let i = 0;
+  return sql.replaceAll("datetime('now')", PG_NOW).replace(/\?/g, () => `$${++i}`);
+};
+
+async function exec(sql, params) {
+  if (dialect === 'postgres') {
+    if (!pool) await openDb();
+    const client = txStore.getStore() || pool;
+    const res = await client.query(toPg(sql), params);
+    return { rows: res.rows, changes: res.rowCount };
+  }
+  if (!sqlite) await openDb();
+  const stmt = sqlite.prepare(sql);
+  if (/^\s*(select|with)\b/i.test(sql) || /\breturning\b/i.test(sql)) {
+    return { rows: stmt.all(...params).map((r) => ({ ...r })), changes: 0 };
+  }
+  const r = stmt.run(...params);
+  return { rows: [], changes: Number(r.changes), lastId: Number(r.lastInsertRowid) };
 }
 
-// Esegue fn dentro una transazione; annulla tutto in caso di errore.
-export function tx(fn) {
-  const d = getDb();
-  d.exec('BEGIN');
+export const one = async (sql, ...params) => (await exec(sql, params)).rows[0];
+export const all = async (sql, ...params) => (await exec(sql, params)).rows;
+export const run = async (sql, ...params) => exec(sql, params);
+
+// INSERT che restituisce l'id della riga creata, su entrambi i motori.
+export async function insert(sql, ...params) {
+  if (dialect === 'postgres') return (await exec(`${sql} RETURNING id`, params)).rows[0].id;
+  return (await exec(sql, params)).lastId;
+}
+
+// Transazione: tutte le query dentro fn usano la stessa connessione.
+let sqliteLock = Promise.resolve();
+export async function tx(fn) {
+  if (dialect === 'postgres') {
+    if (!pool) await openDb();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = await txStore.run(client, fn);
+      await client.query('COMMIT');
+      return out;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+  if (!sqlite) await openDb();
+  // SQLite ha una sola connessione: le transazioni si mettono in fila.
+  const previous = sqliteLock;
+  let release;
+  sqliteLock = new Promise((r) => { release = r; });
+  await previous;
   try {
-    const out = fn();
-    d.exec('COMMIT');
+    sqlite.exec('BEGIN');
+    const out = await fn();
+    sqlite.exec('COMMIT');
     return out;
   } catch (err) {
-    d.exec('ROLLBACK');
+    sqlite.exec('ROLLBACK');
     throw err;
+  } finally {
+    release();
   }
 }
 
-// node:sqlite restituisce oggetti senza prototipo: li normalizziamo in oggetti semplici.
-export const one = (sql, ...params) => {
-  const row = getDb().prepare(sql).get(...params);
-  return row ? { ...row } : undefined;
-};
-export const all = (sql, ...params) => getDb().prepare(sql).all(...params).map((r) => ({ ...r }));
-export const run = (sql, ...params) => getDb().prepare(sql).run(...params);
+// Per le migrazioni e i controlli di salute.
+export async function rawPool() {
+  if (dialect !== 'postgres') return null;
+  if (!pool) await openDb();
+  return pool;
+}

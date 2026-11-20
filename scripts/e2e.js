@@ -30,11 +30,11 @@ const { startServer } = await import('../src/server.js');
 const app = await startServer(APP_PORT);
 
 // Assistente installato sul "sito del cliente" (localhost:3151): autorizzato solo su localhost.
-const locanda = M.listWidgets(M.findUserByEmail('info@locandalemura.example').account_id)[0];
-M.updateWidget(locanda.id, { allowedDomains: ['localhost'] });
+const locanda = (await M.listWidgets((await M.findUserByEmail('info@locandalemura.example')).account_id))[0];
+await M.updateWidget(locanda.id, { allowedDomains: ['localhost'] });
 // Un secondo assistente autorizzato altrove: sul sito di prova NON deve comparire.
-const pizzeria = M.listWidgets(M.findUserByEmail('ordini@pizzeriadagino.example').account_id)[0];
-M.updateAccount(pizzeria.account_id, { status: 'active' });
+const pizzeria = (await M.listWidgets((await M.findUserByEmail('ordini@pizzeriadagino.example')).account_id))[0];
+await M.updateAccount(pizzeria.account_id, { status: 'active' });
 
 const OLD_SITE = `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Locanda Le Mura - Camere</title>
@@ -254,7 +254,7 @@ try {
     f.querySelector('input[type=checkbox]').checked = true; f.querySelector('.btn').click(); })()`);
   await waitFor(`[...${S(locanda.public_id)}.querySelectorAll('.msg.bot')].some(e => e.textContent.includes('Grazie Sara'))`, 'conferma contatto');
   await shot('03-sito-cliente-contatto-inviato');
-  check(M.listLeads({ widgetId: locanda.id }).some((l) => l.name === 'Sara Galli' && !l.is_test), 'contatto salvato nel database');
+  check((await M.listLeads({ widgetId: locanda.id })).some((l) => l.name === 'Sara Galli' && !l.is_test), 'contatto salvato nel database');
   // la conversazione sopravvive al cambio pagina
   await goto(`http://localhost:${SITE_PORT}/altra-pagina`);
   await waitFor(`!!${W(locanda.public_id)}`, 'widget dopo cambio pagina');
@@ -302,9 +302,14 @@ try {
   check(await evaluate(`(() => { const col = document.querySelector('.hero-copy').getBoundingClientRect();
     const r = document.createRange(); r.selectNodeContents(document.querySelector('.display'));
     return [...r.getClientRects()].every(b => b.right <= col.right + 1); })()`), 'hero: il titolo resta nella sua colonna (va a capo, non finisce sotto la demo)');
-  // campo generativo dell'hero: il canvas disegna davvero qualcosa
-  check(await evaluate(`(() => { const c = document.querySelector('[data-field=hero]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-    let n = 0; for (let i = 3; i < d.length; i += 64) if (d[i] > 0) n++; return n > 50; })()`), 'hero: campo generativo disegnato');
+  // sfera di particelle: disegnata davvero, e cambia posizione/forma passando da una sezione all'altra
+  const orbState = `(() => { const c = document.querySelector('[data-orb-canvas]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0, sx = 0, sy = 0; for (let i = 3, p = 0; i < d.length; i += 64, p += 16) if (d[i] > 20) { n++; sx += p % c.width; sy += Math.floor(p / c.width); }
+    return { n, x: n ? sx / n / c.width : 0, y: n ? sy / n / c.height : 0 }; })()`;
+  const orbHero = await evaluate(orbState);
+  check(orbHero.n > 400, `sfera: disegnata nell'hero (${orbHero.n} punti accesi)`);
+  check(!(await evaluate(`!!document.querySelector('.loader') && getComputedStyle(document.querySelector('.loader')).visibility !== 'hidden'`)), 'caricamento: il sipario si è alzato');
+  check((await evaluate(`getComputedStyle(document.querySelector('.loader-n')).getPropertyValue('--n').trim()`)) === '100', 'caricamento: la percentuale arriva a 100%');
 
   // racconto a scroll "Una notte": lo stato segue la posizione di scroll, avanti e indietro
   const storyAt = (p) => evaluate(`(async () => {
@@ -375,8 +380,9 @@ try {
   const midSteps = await evaluate(`document.querySelectorAll('.steps > .is-on').length`);
   check(midSteps >= 1 && midSteps < 3, `come funziona: i passaggi si accendono uno alla volta (${midSteps} di 3 a metà strada)`);
   await shot('19-come-funziona-in-corso');
-  await placeAt('.steps', 0.12);
+  await placeAt('.step-row:last-child', 0.35);
   check((await evaluate(`document.querySelectorAll('.steps > .is-on').length`)) === 3, 'come funziona: tutti i passaggi accesi');
+  check((await evaluate(`parseFloat(getComputedStyle(document.querySelector('.step-row:last-child .art-grid rect')).strokeDashoffset)`)) < 0.3, 'come funziona: il disegno al tratto si completa con lo scroll');
   await placeAt('.code-card', 0.1);
   check(await evaluate(`document.querySelector('[data-scroll=type]').classList.contains('is-typed') && document.querySelector('[data-type]').textContent.includes('w.js')`), 'come funziona: il codice si scrive da solo fino in fondo');
   await placeAt('.steps', 0.97);
@@ -400,9 +406,16 @@ try {
   check((await evaluate(`Number(getComputedStyle(document.querySelector('.plan')).opacity)`)) < 0.5, 'prezzi: i piani sono ancora abbassati prima di arrivarci');
   await placeAt('.pricing', 0.55);
   await shot('22-prezzi-in-salita');
+  await placeAt('#regole .bento', 0.25);
+  await sleep(900);
+  const orbBento = await evaluate(orbState);
+  check(orbBento.n > 400 && Math.abs(orbBento.y - orbHero.y) > 0.15, `sfera: si sposta e cambia forma tra hero e regole (y ${orbHero.y.toFixed(2)} → ${orbBento.y.toFixed(2)})`);
+  await shot('19b-regole-bento');
   await placeAt('.pricing', 0.08);
   check(await evaluate(`[...document.querySelectorAll('.plan')].every(p => Number(getComputedStyle(p).opacity) > 0.98)`), 'prezzi: tutti i piani alzati e visibili');
   check(await evaluate(`document.querySelector('.nav a[href="/#prezzi"]').classList.contains('is-current')`), 'menu: evidenzia la sezione Prezzi mentre la si legge');
+  check(await evaluate(`(() => { const a = document.querySelector('.nav a[href="/#prezzi"]').getBoundingClientRect(); const ink = document.querySelector('.nav-ink').getBoundingClientRect();
+    return Math.abs(a.left - ink.left) < 2 && Math.abs(a.width - ink.width) < 2; })()`), 'menu: la pillola si posiziona sotto la voce corrente');
 
   await placeAt('.cta-final', 0.1);
   await sleep(1200);
@@ -428,7 +441,9 @@ try {
   await shot('12-landing-demo');
   await viewport(390, 844, true);
   await goto(`${BASE}/`);
-  await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'demo mobile completa', 9000);
+  // sul telefono la demo sta sotto il titolo: parte quando il visitatore ci arriva
+  await evaluate(`document.querySelector('.hero-stage').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+  await waitFor(`document.querySelector('[data-demo-notify]').classList.contains('is-shown')`, 'demo mobile completa', 11000);
   await sleep(700);
   check(await evaluate(noOverlap), 'demo hero: la notifica non copre la chat (mobile)');
   await shot('13b-landing-mobile-hero');
@@ -444,6 +459,14 @@ try {
   await sleep(500);
   await shot('13-landing-mobile', { full: true });
   await checkFitsPhone('landing mobile');
+  // menu mobile: foglio che sale dal basso e si chiude scegliendo una voce
+  await evaluate(`document.querySelector('.mobile-nav summary').click()`);
+  await sleep(800);
+  check(await evaluate(`(() => { const p = document.querySelector('.mobile-panel').getBoundingClientRect(); return document.querySelector('.mobile-nav').open && p.bottom <= innerHeight && p.bottom > innerHeight - 40; })()`), 'menu mobile: il foglio si apre dal basso');
+  await shot('13e-menu-mobile');
+  await evaluate(`document.querySelector('.mobile-links a[href="/#prezzi"]').click()`);
+  await sleep(300);
+  check(!(await evaluate(`document.querySelector('.mobile-nav').open`)), 'menu mobile: si chiude scegliendo una voce');
 
   // ---------- 3. Dashboard cliente ----------
   await viewport(1440, 900);
@@ -473,7 +496,7 @@ try {
   await shot('24-cliente-installazione', { full: true });
   await goto(`${BASE}/app/widgets/${locanda.id}/conversazioni`);
   await shot('25-cliente-conversazioni', { full: true });
-  const conv = M.listConversations(locanda.id).find((c) => c.has_lead && c.unanswered);
+  const conv = (await M.listConversations(locanda.id)).find((c) => c.has_lead && c.unanswered);
   await goto(`${BASE}/app/widgets/${locanda.id}/conversazioni/${conv.public_id}`);
   await shot('26-cliente-conversazione-dettaglio', { full: true });
   await goto(`${BASE}/app/leads`);

@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../src/config.js';
-import { openDb, one } from '../src/db.js';
+import { closeDb, openDb, one } from '../src/db.js';
 import { seedDatabase } from '../src/seed.js';
 
 const reset = process.argv.includes('--reset');
@@ -13,10 +13,10 @@ if (reset) {
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(config.dbPath + suffix, { force: true });
   console.log('Database cancellato.');
 }
-openDb();
+await openDb();
 
 const credFile = path.join(path.dirname(config.dbPath), 'credenziali-demo.txt');
-const lines = seedDatabase({ admin: 'auto', sampleClients: true });
+const lines = await seedDatabase({ admin: 'auto', sampleClients: true });
 
 if (lines.length) {
   fs.mkdirSync(path.dirname(credFile), { recursive: true });
@@ -27,4 +27,5 @@ if (lines.length) {
 } else {
   console.log('Niente da aggiungere: il database è già pronto.');
 }
-console.log(`Clienti: ${one('SELECT COUNT(*) AS n FROM accounts').n} · Assistenti: ${one('SELECT COUNT(*) AS n FROM widgets').n}`);
+console.log(`Clienti: ${(await one('SELECT COUNT(*) AS n FROM accounts')).n} · Assistenti: ${(await one('SELECT COUNT(*) AS n FROM widgets')).n}`);
+await closeDb();

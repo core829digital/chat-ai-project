@@ -1,9 +1,9 @@
 # Aperto — MVP
 
 Assistente per siti web installabile con una riga di codice, con dashboard per i clienti e pannello di amministrazione.
-**In questa versione l'AI non è collegata**: l'assistente risponde con le risposte scritte dal cliente, scegliendo la più vicina alla domanda (motore in italiano in `src/lib/matcher.js`). Quando non è sicuro lo dice e raccoglie i recapiti.
+L'assistente risponde con le risposte scritte dal cliente, scegliendo la più vicina alla domanda (motore in italiano in `src/lib/matcher.js`). Quando non è sicuro lo dice e raccoglie i recapiti. In più, per ogni assistente si può attivare il **motore AI (beta)** tramite Neon AI Gateway: riformula usando solo le stesse informazioni e, se l'AI non è disponibile, torna da solo alle risposte scritte.
 
-Nessuna dipendenza esterna: serve solo **Node.js 24 o successivo** (usa il database SQLite integrato in Node).
+Serve **Node.js 24 o successivo**. In locale usa il database SQLite integrato in Node; con `DATABASE_URL` impostata usa **Neon Postgres**.
 
 ## Avvio
 
@@ -34,8 +34,9 @@ Per ricominciare da zero: `npm run seed -- --reset`. Per sviluppare con riavvio 
 ## Verifiche
 
 ```bash
-npm test          # 31 test: motore di risposta, sicurezza, tutti i flussi del server
-npm run e2e       # browser vero (Chrome headless): sito cliente su altro dominio, widget, dashboard, admin; screenshot in ./screenshots
+npm run build     # impacchetta gli script del browser (esbuild) e controlla la sintassi di tutti i file
+npm test          # 31 test: motore di risposta, sicurezza, tutti i flussi del server (SQLite, o Postgres se DATABASE_URL è impostata)
+npm run e2e       # browser vero (Chrome headless): sito cliente su altro dominio, widget, landing animata, dashboard, admin; screenshot in ./screenshots
 ```
 
 Il test nel browser usa un finto sito cliente del 2009 senza meta viewport e con CSS aggressivo, per verificare che il widget funzioni anche sui siti vecchi e non venga rotto dalla grafica del sito.
@@ -49,7 +50,7 @@ Password con scrypt · sessioni con cookie HttpOnly/SameSite · protezione CSRF 
 src/
   server.js          avvio e instradamento
   config.js          piani, prezzi, impostazioni
-  db.js, models.js   database e query
+  db.js, models.js   database (SQLite o Postgres, stesse query) e query
   auth.js            sessioni, CSRF, permessi
   templates.js       modelli di settore con le domande già scritte
   lib/matcher.js     motore di risposta senza AI (italiano)
@@ -57,19 +58,36 @@ src/
   routes/            public, app (cliente), admin, api (widget)
   views/             pagine HTML
 public/widget/w.js   il widget (Shadow DOM, nessuna dipendenza)
-public/js/motion.js  motion design della landing (campo generativo, racconto a scroll)
+public/js/motion.js  motion design della landing (sfera di particelle, scroll morbido, racconto a scroll)
+src/client/live.js   conversazioni in tempo reale (Neon Realtime), impacchettato in public/js/live.js
+src/lib/ai.js        motore AI tramite Neon AI Gateway
+src/lib/realtime.js  query sigillate per Neon Realtime
+migrations/          schema Postgres (applicato con npm run migrate)
 docs/               note di progetto (motion-design.md)
 wordpress-plugin/    plugin WordPress
 scripts/             seed ed e2e
 test/                test automatici
 ```
 
-## Collegare l'AI (prossimo passo)
-Tutte le risposte passano da `respond()` in `src/lib/responder.js`. Basta aggiungere una funzione che chiama il modello con le risposte del cliente come contesto e restituisce lo stesso oggetto (`text`, `outcome`, `action`, `suggestions`): widget, dashboard, statistiche e limiti dei piani funzionano già.
+## Neon (database, tempo reale, AI)
+
+Il progetto è collegato a Neon con `neon.ts` (servizi: Postgres, Auth, AI Gateway, Functions, Realtime).
+Le variabili arrivano con `neon env pull` in `.env.local` (esclusa da git: non va mai committata).
+
+```bash
+npm run migrate      # applica migrations/*.sql (usa DATABASE_URL_UNPOOLED, connessione diretta)
+npm run seed:neon    # dati iniziali sul database Neon
+npm run start:neon   # avvia l'app con le variabili di .env.local
+```
+
+- **Postgres**: l'app usa la connessione *pooled* (`DATABASE_URL`), le migrazioni quella diretta. Le migrazioni vanno provate prima su un branch (`neon branches create`), poi applicate a production.
+- **Realtime**: nella dashboard, la lista Conversazioni si aggiorna da sola quando arriva un messaggio. Il server sigilla una query limitata all'assistente del cliente (`POST /api/app/widgets/:id/live`, con sessione e CSRF); la capability dura 60 secondi e il browser la rinnova.
+- **AI Gateway**: in Aspetto → "Come risponde" si sceglie il motore AI. Il modello si imposta con `AI_MODEL` (predefinito `claude-haiku-4-5`). Serve credito AI Gateway sull'organizzazione Neon: senza, ogni richiesta risponde 403 `paid_plan_required` e il widget usa automaticamente le risposte scritte.
+- **Auth**: Neon Auth è attivo sul progetto ma l'app usa ancora il proprio sistema di accesso (scrypt + sessioni); la migrazione è una scelta separata.
 
 ## Pubblicazione su Vercel (deploy automatico da GitHub)
 
-Il progetto è pronto per Vercel: `vercel.json` manda tutte le richieste alla funzione `api/index.js`, che usa la stessa applicazione del server locale. Non serve alcun comando di build.
+Il progetto è pronto per Vercel: `vercel.json` manda tutte le richieste alla funzione `api/index.js`, che usa la stessa applicazione del server locale. Vercel esegue da solo `npm run build`.
 
 **Collegamento (una volta sola, dal sito di Vercel):**
 1. vercel.com → **Add New… → Project** → importa il repository `core829digital/chat-ai-project`.
@@ -79,12 +97,15 @@ Il progetto è pronto per Vercel: `vercel.json` manda tutte le richieste alla fu
    - `ADMIN_PASSWORD` — password dell'amministratore (almeno 12 caratteri; senza questa variabile l'admin non viene creato)
    - `SEED_SAMPLE_CLIENTS` — `1` solo se vuoi i clienti di esempio (hanno password pubbliche nel repository: non usarlo su un sito aperto)
    - `BASE_URL` — facoltativa, solo con un dominio personalizzato (es. `https://www.tuodominio.it`)
+   - `DATABASE_URL` — la connessione *pooled* di Neon (production), così i dati restano salvati
+   - `NEON_REALTIME_URL`, `NEON_REALTIME_SECRET` — per le conversazioni in tempo reale
+   - `NEON_AI_GATEWAY_BASE_URL`, `NEON_AI_GATEWAY_TOKEN` — per il motore AI (facoltative)
 4. **Deploy**. Da quel momento ogni `git push` su `main` pubblica in produzione e ogni altro branch crea un'anteprima.
 
-**Limite importante:** su Vercel il database SQLite sta in `/tmp`, che si svuota quando Vercel ricrea l'istanza (dopo qualche minuto di inattività o a ogni deploy). Landing, demo, accesso admin e dashboard funzionano, ma registrazioni, assistenti creati e conversazioni **non restano salvati**. Va bene per mostrare il prodotto; per i clienti veri serve un database esterno (es. PostgreSQL su Supabase o Neon, regione UE): tutte le query sono in `src/models.js`.
+**Senza `DATABASE_URL`** l'app su Vercel usa SQLite in `/tmp`, che si svuota quando Vercel ricrea l'istanza: va bene solo per mostrare il prodotto. Con `DATABASE_URL` di Neon i dati restano salvati (regione eu-central-1, Francoforte).
 
 ## Prima della messa online
 - `NODE_ENV=production`, `BASE_URL=https://dominio-definitivo`, server in UE dietro HTTPS.
 - Pagamenti (Stripe) e invio email (inviti, notifica nuovi contatti, recupero password) non sono ancora collegati: oggi il cambio piano lo fa l'admin e i link di invito si copiano o si inviano con l'email preparata.
 - Privacy, termini e DPA sono bozze da far completare a un consulente.
-- Con molti clienti: passare a PostgreSQL (le query sono tutte in `models.js`) e spostare i limiti di frequenza su Redis.
+- Con molti clienti: spostare i limiti di frequenza (oggi in memoria) su Redis.

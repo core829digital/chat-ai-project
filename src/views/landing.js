@@ -1,7 +1,7 @@
 import { config, PLANS } from '../config.js';
-import { html } from '../lib/html.js';
+import { html, raw } from '../lib/html.js';
 import { SECTORS } from '../templates.js';
-import { icon, publicLayout } from './layout.js';
+import { chip, icon, publicLayout } from './layout.js';
 
 const snippet = (id = 'wdg_abc123') => `<script src="${config.baseUrl}/w.js" data-id="${id}" async></script>`;
 const brand = config.brand.name;
@@ -97,36 +97,83 @@ const DEMOS = [
 
 const PLATFORMS = ['WordPress', 'Wix', 'Shopify', 'Joomla', 'Squarespace', 'PrestaShop', 'Drupal', 'Webflow', 'HTML e PHP'];
 
-const step = (n, title, text, visual) => html`<li class="step" data-reveal style="--i:${n}">
-  <div class="step-visual" aria-hidden="true" data-spot>${visual}</div>
-  <span class="step-n">${n}</span>
-  <h3>${title}</h3>
-  <p>${text}</p>
-</li>`;
+// Disegni al tratto delle sezioni: SVG con linee che si disegnano allo scroll (pathLength=1, vedi site.css).
+const art = {
+  // Griglia di tessere: una si accende, il puntatore ci arriva sopra
+  tiles: () => raw(`<svg class="art art-tiles" viewBox="0 0 360 260" aria-hidden="true">
+    <g class="art-grid">${[0, 1, 2, 3, 4].map((r) => [0, 1, 2, 3, 4, 5].map((c) => `<rect pathLength="1" x="${8 + c * 58}" y="${8 + r * 50}" width="${(r + c) % 5 === 1 && c < 5 ? 108 : 50}" height="42" rx="11"/>`).join('')).join('')}</g>
+    <rect class="art-hot" pathLength="1" x="124" y="108" width="50" height="42" rx="11"/>
+    <path class="art-plus" d="M149 122v14M142 129h14"/>
+    <path class="art-cursor" d="M168 140l20 8-9 3-3 9z"/>
+  </svg>`),
+  // Nodo centrale collegato: i contatti arrivano da tutte le direzioni
+  hub: () => raw(`<svg class="art art-hub" viewBox="0 0 360 260" aria-hidden="true">
+    <g class="art-grid">${[[20, 30], [20, 110], [20, 190], [288, 30], [288, 110], [288, 190], [124, 8], [124, 212]].map(([x, y]) => `<rect pathLength="1" x="${x}" y="${y}" width="${x === 124 ? 112 : 52}" height="${x === 124 ? 38 : 52}" rx="12"/>`).join('')}</g>
+    <g class="art-wires">
+      <path pathLength="1" d="M72 56C120 56 120 130 154 130"/><path pathLength="1" d="M72 136H154"/><path pathLength="1" d="M72 216C120 216 120 130 154 130"/>
+      <path pathLength="1" d="M288 56C240 56 240 130 206 130"/><path pathLength="1" d="M288 136H206"/><path pathLength="1" d="M288 216C240 216 240 130 206 130"/>
+    </g>
+    <g class="art-pulses"><circle r="2.6"><animateMotion dur="2.8s" repeatCount="indefinite" path="M72 56C120 56 120 130 154 130"/></circle><circle r="2.6"><animateMotion dur="3.4s" begin="-1.2s" repeatCount="indefinite" path="M288 216C240 216 240 130 206 130"/></circle><circle r="2.6"><animateMotion dur="3.1s" begin="-2s" repeatCount="indefinite" path="M288 136H206"/></circle></g>
+    <rect class="art-hot" pathLength="1" x="154" y="104" width="52" height="52" rx="14"/>
+    <path class="art-plus" d="M180 120v20M170 130h20"/>
+  </svg>`),
+  // Circuito: la domanda viaggia fino al chip dell'avviso
+  circuit: () => raw(`<svg class="art art-circuit" viewBox="0 0 420 220" aria-hidden="true">
+    <g class="art-grid">${[[40, 40], [110, 40], [250, 40], [320, 40], [40, 150], [250, 150], [320, 150]].map(([x, y]) => `<rect pathLength="1" x="${x}" y="${y}" width="56" height="52" rx="12"/>`).join('')}</g>
+    <g class="art-wires"><path pathLength="1" d="M166 66H196V120H180"/><path pathLength="1" d="M250 66H222V120H238"/><path pathLength="1" d="M209 92V150"/></g>
+    <g class="art-pulses"><circle r="2.6"><animateMotion dur="2.4s" repeatCount="indefinite" path="M166 66H196V120H180"/></circle><circle r="2.6"><animateMotion dur="2.9s" begin="-1s" repeatCount="indefinite" path="M250 66H222V120H238"/></circle></g>
+    <rect class="art-hot" pathLength="1" x="180" y="104" width="58" height="56" rx="14"/>
+    <path class="art-plus" d="M200 126h18M200 133h12M200 140h16"/>
+  </svg>`),
+  // Globo a puntini con i luoghi: i dati restano in Europa
+  globe: () => {
+    const dots = [];
+    for (let lat = -70; lat <= 70; lat += 10) {
+      const r = Math.cos((lat * Math.PI) / 180);
+      const n = Math.max(6, Math.round(34 * r));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const x = Math.cos(a) * r;
+        if (Math.sin(a) < 0) continue; // solo la metà rivolta verso chi guarda
+        dots.push(`<circle cx="${(150 + x * 118).toFixed(1)}" cy="${(130 - Math.sin((lat * Math.PI) / 180) * 118).toFixed(1)}" r="${(1.1 + Math.sin(a) * 0.9).toFixed(2)}" opacity="${(0.25 + Math.sin(a) * 0.55).toFixed(2)}"/>`);
+      }
+    }
+    return raw(`<svg class="art art-globe" viewBox="0 0 300 260" aria-hidden="true">
+      <g class="globe-dots">${dots.join('')}</g>
+      <g class="globe-pin" style="--d:0s"><circle cx="160" cy="78" r="5"/><circle class="pin-ring" cx="160" cy="78" r="5"/></g>
+      <g class="globe-pin" style="--d:.6s"><circle cx="128" cy="112" r="4"/><circle class="pin-ring" cx="128" cy="112" r="4"/></g>
+      <g class="globe-pin" style="--d:1.2s"><circle cx="186" cy="124" r="4"/><circle class="pin-ring" cx="186" cy="124" r="4"/></g>
+    </svg>`);
+  },
+};
+
+// Piattaforme in orbita attorno all'assistente (sigle, non loghi: nessun marchio altrui riprodotto)
+const ORBIT = [['WP', 'WordPress'], ['Sh', 'Shopify'], ['Wx', 'Wix'], ['</>', 'HTML'], ['Jo', 'Joomla'], ['Ps', 'PrestaShop']];
 
 export function landingPage(ctx, { demoWidgetId }) {
   const sectors = Object.entries(SECTORS).filter(([id]) => id !== 'generico');
   const first = DEMOS[0];
   const body = html`
-<section class="hero" data-scroll="hero">
-  <div class="hero-glow" aria-hidden="true"></div>
-  <canvas class="hero-field" data-field="hero" aria-hidden="true"></canvas>
-  <div class="wrap hero-grid">
-    <div class="hero-copy">
-      <p class="pill" style="--i:0"><span class="live-dot" aria-hidden="true"></span>Risponde 24 ore su 24, anche la domenica</p>
-      <h1 class="display words" style="--i:1">${words('Il tuo sito risponde ai clienti.')} <span class="hl">${words('Anche alle undici di sera.', { start: 6 })}</span></h1>
-      <p class="lead" style="--i:2">Un assistente che conosce orari, prezzi e servizi della tua attività. Risponde ai visitatori in pochi secondi e ti passa i contatti di chi vuole parlarti.</p>
-      <div class="hero-actions" style="--i:3">
-        <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Prova gratis per 14 giorni ${icon('arrow', 16)}</a>
-        ${demoWidgetId ? html`<button class="btn btn-ghost btn-lg" type="button" data-open-demo>Fagli una domanda</button>` : ''}
-      </div>
-      <ul class="hero-ticks" style="--i:4">
-        <li>${icon('check', 16)} Pronto in 10 minuti</li>
-        <li>${icon('check', 16)} Funziona su qualsiasi sito</li>
-        <li>${icon('check', 16)} Nessuna carta richiesta</li>
-      </ul>
-    </div>
+<div class="loader" aria-hidden="true"><span class="loader-n"></span><span class="loader-bar"></span></div>
+<canvas class="orb" data-orb-canvas aria-hidden="true"></canvas>
 
+<section class="hero" data-scroll="hero" data-orb="wave .5 1.08 1.3 -.42 .9">
+  <div class="wrap hero-copy">
+    <p class="pill" style="--i:0"><span class="live-dot" aria-hidden="true"></span>Risponde 24 ore su 24, anche la domenica</p>
+    <h1 class="display words" style="--i:1">${words('Il tuo sito risponde ai clienti.')} <span class="hl">${words('Anche alle undici di sera.', { start: 6 })}</span></h1>
+    <p class="lead" style="--i:2">Un assistente che conosce orari, prezzi e servizi della tua attività. Risponde ai visitatori in pochi secondi e ti passa i contatti di chi vuole parlarti.</p>
+    <div class="hero-actions" style="--i:3">
+      <a class="btn btn-white btn-lg" href="/registrati" data-magnetic>Prova gratis per 14 giorni ${chip()}</a>
+      ${demoWidgetId ? html`<button class="btn btn-glass btn-lg" type="button" data-open-demo>Fagli una domanda ${chip()}</button>` : ''}
+    </div>
+    <ul class="hero-ticks" style="--i:4">
+      <li>${icon('check', 15)} Pronto in 10 minuti</li>
+      <li>${icon('check', 15)} Funziona su qualsiasi sito</li>
+      <li>${icon('check', 15)} Nessuna carta richiesta</li>
+    </ul>
+  </div>
+
+  <div class="wrap hero-stage-wrap">
     <div class="hero-stage">
       <div class="demo-tabs" role="tablist" aria-label="Scegli un settore per vedere un esempio">
         ${DEMOS.map((d, i) => html`<button type="button" role="tab" class="demo-tab${i === 0 ? ' is-active' : ''}" aria-selected="${i === 0 ? 'true' : 'false'}" data-demo-tab="${d.id}">${d.tab}<span class="demo-tab-bar" aria-hidden="true"></span></button>`)}
@@ -160,22 +207,42 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="platforms" aria-label="Piattaforme compatibili" data-scroll="marquee">
-  <p class="platforms-label">Si installa su</p>
+<section class="platforms" aria-label="Piattaforme compatibili" data-scroll="marquee" data-orb="sphere .5 1.05 .75 .3 .4">
+  <p class="platforms-label">Si installa su qualsiasi sito</p>
   <div class="marquee">
     <ul class="marquee-track">${PLATFORMS.map((p) => html`<li>${p}</li>`)}</ul>
     <ul class="marquee-track" aria-hidden="true">${PLATFORMS.map((p) => html`<li>${p}</li>`)}</ul>
   </div>
 </section>
 
-<section class="manifesto" data-scroll="manifesto" aria-label="Perché serve">
+<section class="section features" id="perche" data-orb="sphere .5 .2 .34 .2 .95">
+  <div class="wrap">
+    <div class="section-head center" data-reveal>
+      <h2 class="h2 words">${words('Il tuo sito, sempre aperto.')}</h2>
+      <p class="section-lead">Risponde, non inventa, ti lascia il contatto. Tutto il resto lo decidi tu.</p>
+    </div>
+    <div class="cols-3 feature-cards">
+      ${[
+        ['chat', 'Risponde in due secondi', 'A qualsiasi ora, con orari, prezzi e servizi scritti da te. Anche la domenica sera.'],
+        ['shield', 'Non inventa mai', 'Se non trova una risposta sicura lo dice apertamente e propone di lasciare un contatto.'],
+        ['inbox', 'Ti passa i contatti', 'Nome e telefono di chi vuole parlarti, con il consenso a essere ricontattato.'],
+      ].map(([ic, t, p], i) => html`<article class="glass feature" data-spot data-reveal style="--i:${i}">
+        <span class="disc">${icon(ic, 26)}</span>
+        <h3>${t}</h3>
+        <p>${p}</p>
+      </article>`)}
+    </div>
+  </div>
+</section>
+
+<section class="manifesto" data-scroll="manifesto" aria-label="Perché serve" data-orb="sphere .5 .5 .3 .2 0">
   <div class="manifesto-sticky">
     ${sectionVideo('aurora')}
     <div class="wrap"><p class="manifesto-text">${manifestoText()}</p></div>
   </div>
 </section>
 
-<section class="story" id="una-notte" data-story aria-labelledby="story-title">
+<section class="story" id="una-notte" data-story aria-labelledby="story-title" data-orb="sphere .5 .5 .3 .2 0">
   <div class="story-sticky">
     <canvas class="story-sky" data-field="sky" aria-hidden="true"></canvas>
     <div class="wrap story-grid">
@@ -220,82 +287,130 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section section-alt has-video" id="come-funziona" data-scroll>
+<section class="section has-video" id="come-funziona" data-orb="sphere .92 .42 .55 .3 .26">
   ${sectionVideo('flusso')}
   <div class="wrap">
-    <div class="section-head" data-reveal>
+    <div class="section-head center" data-reveal>
       <p class="eyebrow">Come funziona</p>
       <h2 class="h2 words">${words('Tre passaggi. Nessuno sviluppatore.')}</h2>
     </div>
-    <ol class="steps" data-scroll="steps">
-      ${step(1, 'Scegli il tuo settore', 'Le domande che i tuoi clienti fanno davvero sono già scritte. Tu inserisci orari, prezzi e dettagli veri.', html`
-        <ul class="mini-kb">
-          <li><span class="mini-check">${icon('check', 12)}</span>A che ora è il check-in?</li>
-          <li><span class="mini-check">${icon('check', 12)}</span>C’è il parcheggio?</li>
-          <li class="is-todo"><span class="mini-check"></span>Accettate animali? <em>da completare</em></li>
-        </ul>`)}
-      ${step(2, 'Incolla una riga nel sito', 'Prima di </body>, oppure con il plugin WordPress. Se il sito non si può toccare, usi la pagina chat ospitata.', html`
-        <div class="mini-code"><code>&lt;script src="…/w.js" data-id="wdg_…"&gt;</code><span class="mini-copy">${icon('copy', 13)} Copiato</span></div>`)}
-      ${step(3, 'Ricevi i contatti', 'Quando non sa rispondere lo dice e raccoglie nome e telefono. Tu trovi tutto nella dashboard.', html`
-        <div class="mini-lead"><span class="notify-icon">${icon('inbox', 16)}</span><div><b>Nuovo contatto</b><span>Elena C. · +39 333 …</span></div></div>`)}
+    <ol class="steps">
+      <li class="step-row" data-scroll="step">
+        <div class="step-copy">
+          <span class="step-n">01</span>
+          <h3>Scegli il tuo settore</h3>
+          <p>Le domande che i tuoi clienti fanno davvero sono già scritte. Tu inserisci orari, prezzi e dettagli veri.</p>
+          <a class="btn btn-white" href="/registrati">Scegli il modello ${chip()}</a>
+        </div>
+        <div class="step-art glass" data-spot>
+          ${art.tiles()}
+          <ul class="mini-kb">
+            <li><span class="mini-check">${icon('check', 12)}</span>A che ora è il check-in?</li>
+            <li><span class="mini-check">${icon('check', 12)}</span>C’è il parcheggio?</li>
+            <li class="is-todo"><span class="mini-check"></span>Accettate animali? <em>da completare</em></li>
+          </ul>
+        </div>
+      </li>
+      <li class="step-row is-flip" data-scroll="step">
+        <div class="step-copy">
+          <span class="step-n">02</span>
+          <h3>Incolla una riga nel sito</h3>
+          <p>Prima di &lt;/body&gt;, oppure con il plugin WordPress. Se il sito non si può toccare, usi la pagina chat ospitata.</p>
+          <button class="btn btn-white" type="button" data-copy="${snippet()}"><span>Copia</span> ${chip()}</button>
+        </div>
+        <div class="step-art glass code-card" data-scroll="type" data-spot>
+          <div class="code-card-head"><span class="dots"><i></i><i></i><i></i></span><span>index.html</span><button class="copy-btn" type="button" data-copy="${snippet()}">${icon('copy', 14)} <span>Copia</span></button></div>
+          <div class="code-lines" aria-hidden="true"><i style="--w:46%"></i><i style="--w:72%"></i><i style="--w:58%"></i></div>
+          <div class="code-glow"><pre aria-label="${snippet()}"><code data-type>${snippet()}</code></pre></div>
+          <div class="code-lines" aria-hidden="true"><i style="--w:30%"></i><i style="--w:64%"></i></div>
+        </div>
+      </li>
+      <li class="step-row" data-scroll="step">
+        <div class="step-copy">
+          <span class="step-n">03</span>
+          <h3>Ricevi i contatti</h3>
+          <p>Quando non sa rispondere lo dice e raccoglie nome e telefono. Tu trovi tutto nella dashboard, con la conversazione completa.</p>
+          <a class="btn btn-white" href="/registrati">Inizia ora ${chip()}</a>
+        </div>
+        <div class="step-art glass" data-spot>
+          ${art.hub()}
+          <div class="mini-lead"><span class="notify-icon">${icon('inbox', 16)}</span><div><b>Nuovo contatto</b><span>Elena C. · +39 333 …</span></div></div>
+        </div>
+      </li>
     </ol>
-    <div class="code-card" data-reveal data-scroll="type">
-      <div class="code-card-head"><span>Il codice da incollare nel sito</span><button class="copy-btn" type="button" data-copy="${snippet()}">${icon('copy', 15)} <span>Copia</span></button></div>
-      <pre aria-label="${snippet()}"><code data-type>${snippet()}</code></pre>
-    </div>
     <div class="cols-3 install-modes">
-      <article class="card" data-spot data-reveal style="--i:1"><h3>Una riga di codice</h3><p>Su qualsiasi sito. Il widget è isolato: non cambia la grafica del sito e non la subisce.</p></article>
-      <article class="card" data-spot data-reveal style="--i:2"><h3>Plugin WordPress</h3><p>Installi il plugin, incolli il codice del tuo assistente nelle impostazioni. Fine.</p></article>
-      <article class="card" data-spot data-reveal style="--i:3"><h3>Pagina chat ospitata</h3><p>Un indirizzo pronto per un pulsante, un QR code sul bancone o la firma email.</p></article>
+      <article class="glass card" data-spot data-reveal style="--i:1"><h3>Una riga di codice</h3><p>Su qualsiasi sito. Il widget è isolato: non cambia la grafica del sito e non la subisce.</p></article>
+      <article class="glass card" data-spot data-reveal style="--i:2"><h3>Plugin WordPress</h3><p>Installi il plugin, incolli il codice del tuo assistente nelle impostazioni. Fine.</p></article>
+      <article class="glass card" data-spot data-reveal style="--i:3"><h3>Pagina chat ospitata</h3><p>Un indirizzo pronto per un pulsante, un QR code sul bancone o la firma email.</p></article>
     </div>
   </div>
 </section>
 
-<section class="section" id="settori">
+<section class="section bento-section" id="regole" data-orb="sphere .5 .56 1.12 .35 1">
   <div class="wrap">
-    <div class="section-head" data-reveal>
-      <p class="eyebrow">Modelli di settore</p>
-      <h2 class="h2 words">${words('Non parti da una pagina bianca.')}</h2>
-      <p class="section-lead">Ogni modello contiene le domande che i clienti di quel settore fanno davvero. Tu cambi solo i dettagli.</p>
+    <div class="section-head center" data-reveal>
+      <p class="eyebrow">Regole europee</p>
+      <h2 class="h2 words">${words('Dati in Europa. Trasparenza verso i visitatori.')}</h2>
+      <p class="section-lead">Per uno studio medico, legale o un hotel la conformità non è un dettaglio: decide se puoi usare uno strumento o no.</p>
     </div>
-    <div class="sector-grid" data-scroll>
-      ${sectors.map(([, s], i) => html`<article class="sector" data-spot data-reveal style="--i:${i}">
-        <h3>${s.label}</h3>
-        <ul>${s.faq.slice(0, 3).map(([q]) => html`<li>${q}</li>`)}</ul>
-      </article>`)}
-      <article class="sector sector-other" data-spot data-reveal style="--i:${sectors.length}">
-        <h3>Il tuo settore non c’è?</h3>
-        <p>Parti dal modello generico con orari, indirizzo, contatti, prezzi e pagamenti, e aggiungi le tue domande. Con il servizio di configurazione lo prepariamo noi.</p>
+    <div class="bento">
+      <article class="glass bento-card bento-wide" data-spot data-reveal style="--i:0">
+        <div class="bento-copy"><h3>Avviso AI Act sempre visibile</h3><p>Dal 2 agosto 2026 chi usa un assistente automatico deve dichiararlo. Il widget lo fa dal primo messaggio, e l’avviso non si può togliere.</p></div>
+        ${art.circuit()}
+      </article>
+      <article class="glass bento-card" data-spot data-reveal style="--i:1">
+        <div class="bento-copy"><h3>Funziona con il tuo sito</h3><p>WordPress, Shopify, Wix o HTML scritto a mano: una riga e il widget si adatta.</p></div>
+        <div class="orbit" aria-hidden="true">
+          <span class="orbit-core">${icon('chat', 18)}</span>
+          <span class="orbit-ring"></span><span class="orbit-ring orbit-ring-2"></span>
+          ${ORBIT.map(([t, title], i) => html`<span class="orbit-node" style="--a:${(i * 360) / ORBIT.length}deg" title="${title}"><b>${t}</b></span>`)}
+        </div>
+      </article>
+      <article class="glass bento-card" data-spot data-reveal style="--i:2">
+        <div class="bento-copy"><h3>Nessun cookie di profilazione</h3><p>Il widget non chiede consensi aggiuntivi nel banner del sito. I contatti arrivano solo con consenso esplicito.</p></div>
+        <div class="keys" aria-hidden="true">${['', '', '', '', '', 'lock', '', '', '', '', '', ''].map((k) => html`<i class="${k ? 'is-hot' : ''}">${k ? icon('shield', 16) : ''}</i>`)}</div>
+      </article>
+      <article class="glass bento-card bento-wide" data-spot data-reveal style="--i:3">
+        <div class="bento-copy"><h3>Server in Unione Europea</h3><p>Conversazioni e contatti restano in UE. La nomina a responsabile del trattamento (DPA) in italiano è pronta da firmare.</p></div>
+        <div class="globe-wrap">${art.globe()}<span class="globe-tag" style="--x:53%;--y:24%">Dati in UE</span><span class="globe-tag" style="--x:36%;--y:39%">Il tuo sito</span><span class="globe-tag" style="--x:66%;--y:44%">I tuoi clienti</span></div>
       </article>
     </div>
   </div>
 </section>
 
-<section class="section section-alt">
-  <div class="wrap split">
-    <div data-reveal>
-      <p class="eyebrow">Regole europee</p>
-      <h2 class="h2 words">${words('Dati in Europa. Trasparenza verso i visitatori.')}</h2>
-      <p class="section-lead">Per uno studio medico, legale o un hotel la conformità non è un dettaglio: decide se puoi usare uno strumento o no.</p>
+<section class="section" id="settori" data-orb="funnel .3 .55 1 .1 .9">
+  <div class="wrap">
+    <div class="section-head center" data-reveal>
+      <p class="eyebrow">Modelli di settore</p>
+      <h2 class="h2 words">${words('Non parti da una pagina bianca.')}</h2>
+      <p class="section-lead">Ogni modello contiene le domande che i clienti di quel settore fanno davvero. Tu cambi solo i dettagli.</p>
     </div>
-    <ul class="checklist">
-      <li data-reveal style="--i:1">${icon('check')}<div><b>Avviso AI Act sempre visibile.</b> Dal 2 agosto 2026 chi usa un assistente automatico deve dichiararlo. Il widget lo fa dal primo messaggio.</div></li>
-      <li data-reveal style="--i:2">${icon('check')}<div><b>Server in Unione Europea.</b> Conversazioni e contatti restano in UE.</div></li>
-      <li data-reveal style="--i:3">${icon('check')}<div><b>Nomina a responsabile del trattamento.</b> Il DPA in italiano è pronto da firmare.</div></li>
-      <li data-reveal style="--i:4">${icon('check')}<div><b>Nessun cookie di profilazione.</b> Il widget non richiede consensi aggiuntivi nel banner del sito.</div></li>
-      <li data-reveal style="--i:5">${icon('check')}<div><b>Consenso esplicito per i contatti.</b> Chi lascia i propri recapiti accetta di essere ricontattato, con link alla tua informativa.</div></li>
-    </ul>
+    <div class="sector-grid" data-scroll>
+      ${sectors.map(([, s], i) => html`<article class="glass sector" data-spot data-reveal style="--i:${i % 3}">
+        <h3>${s.label}</h3>
+        <ul>${s.faq.slice(0, 3).map(([q]) => html`<li>${q}</li>`)}</ul>
+      </article>`)}
+      <article class="glass sector sector-other" data-spot data-reveal style="--i:${sectors.length % 3}">
+        <h3>Il tuo settore non c’è?</h3>
+        <p>Parti dal modello generico con orari, indirizzo, contatti, prezzi e pagamenti, e aggiungi le tue domande. Con il servizio di configurazione lo prepariamo noi.</p>
+      </article>
+    </div>
+    <div class="cols-3 stats">
+      <div class="glass stat" data-reveal style="--i:0"><b><span data-count="24">24</span>/7</b><span>Sempre aperto, anche nei festivi</span></div>
+      <div class="glass stat" data-reveal style="--i:1"><b><span data-count="10">10</span> min</b><span>Per installarlo sul tuo sito</span></div>
+      <div class="glass stat" data-reveal style="--i:2"><b>0 €</b><span>Per risposta: paghi un canone fisso</span></div>
+    </div>
   </div>
 </section>
 
-<section class="section section-dark has-video" id="agenzie" data-scroll>
+<section class="section section-dark has-video" id="agenzie" data-scroll data-orb="funnel .5 .5 .8 .1 0">
   ${sectionVideo('rete')}
   <div class="wrap split">
     <div data-reveal>
-      <p class="eyebrow eyebrow-light">Per agenzie web</p>
+      <p class="eyebrow">Per agenzie web</p>
       <h2 class="h2 words">${words('Rivendilo ai tuoi clienti. Gestiscili tutti da una dashboard.')}</h2>
       <p class="section-lead">Crei l’assistente per il cliente, lo configuri con il modello del suo settore e glielo consegni con un link di invito. Il cliente controlla le risposte e vede i contatti raccolti. Tu mantieni il controllo di tutto.</p>
-      <a class="btn btn-light btn-lg" href="mailto:${config.brand.supportEmail}?subject=Programma%20agenzie">Parliamo del programma partner</a>
+      <a class="btn btn-white btn-lg" href="mailto:${config.brand.supportEmail}?subject=Programma%20agenzie">Parliamo del programma partner ${chip()}</a>
     </div>
     <dl class="agency-points">
       <div data-reveal style="--i:1"><dt><span data-count="25">25</span> siti</dt><dd>nel piano Agency, con conversazioni condivise tra tutti i clienti</dd></div>
@@ -305,7 +420,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section" id="prezzi">
+<section class="section" id="prezzi" data-orb="ring .5 .1 1.05 -.95 .85">
   <div class="wrap">
     <div class="section-head center" data-reveal>
       <p class="eyebrow">Prezzi</p>
@@ -318,21 +433,21 @@ export function landingPage(ctx, { demoWidgetId }) {
       </div>
     </div>
     <div class="pricing" data-scroll>
-      ${Object.values(PLANS).map((p, i) => html`<article class="plan${p.id === 'pro' ? ' plan-featured' : ''}" data-spot style="--o:${(i * 0.09).toFixed(2)}">
+      ${Object.values(PLANS).map((p, i) => html`<article class="glass plan${p.id === 'pro' ? ' plan-featured' : ''}" data-spot style="--o:${(i * 0.09).toFixed(2)}">
         ${p.id === 'pro' ? html`<span class="plan-tag">Consigliato</span>` : ''}
         <h3>${p.name}</h3>
         <p class="plan-who">${PLAN_COPY[p.id].who}</p>
         <p class="price"><span class="price-n" data-monthly="${p.price}" data-yearly="${Math.round((p.price * 10) / 12)}">${p.price}</span><span class="price-u"> €/mese</span></p>
         <p class="price-note" data-monthly-note="Fatturato mensilmente" data-yearly-note="${`${p.price * 10} € fatturati una volta all’anno`}">Fatturato mensilmente</p>
-        <a class="btn ${p.id === 'pro' ? 'btn-primary' : 'btn-outline'} btn-block" href="/registrati">Prova gratis</a>
-        <ul>${PLAN_COPY[p.id].features.map((f) => html`<li>${icon('check', 16)}${f}</li>`)}</ul>
+        <ul>${PLAN_COPY[p.id].features.map((f) => html`<li><span class="spark" aria-hidden="true"></span>${f}</li>`)}</ul>
+        <a class="btn ${p.id === 'pro' ? 'btn-white' : 'btn-glass'} btn-block" href="/registrati">Prova gratis ${chip()}</a>
       </article>`)}
     </div>
     <p class="pricing-foot" data-reveal>Più di 25 siti, hosting dedicato o contratto su misura? <a href="mailto:${config.brand.supportEmail}?subject=Piano%20Enterprise">Piano Enterprise da 800 €/mese</a>. Configurazione “fatta per te”: 290 € una tantum.</p>
   </div>
 </section>
 
-<section class="section section-alt" id="domande">
+<section class="section" id="domande" data-orb="ring .5 .1 .8 -.95 .3">
   <div class="wrap faq-wrap">
     <div class="section-head" data-reveal>
       <p class="eyebrow">Domande frequenti</p>
@@ -340,18 +455,19 @@ export function landingPage(ctx, { demoWidgetId }) {
       <p class="section-lead">Non trovi la tua? Scrivila all’assistente in basso a destra, oppure a <a href="mailto:${config.brand.supportEmail}">${config.brand.supportEmail}</a>.</p>
     </div>
     <div class="faq" data-reveal style="--i:1">
-      ${FAQ.map(([q, a]) => html`<details><summary>${q}<span class="faq-icon" aria-hidden="true"></span></summary><div class="faq-body"><p>${a}</p></div></details>`)}
+      ${FAQ.map(([q, a]) => html`<details class="glass"><summary>${q}<span class="faq-icon" aria-hidden="true"></span></summary><div class="faq-body"><p>${a}</p></div></details>`)}
     </div>
   </div>
 </section>
 
-<section class="section cta-final has-video" data-scroll>
+<section class="section cta-final has-video" data-scroll data-orb="wave .5 .82 1.2 -.3 1">
   ${sectionVideo('onde')}
   <div class="wrap center" data-reveal>
-    <h2 class="h2 words-scrub">${words('Il tuo sito può rispondere già da stasera.', { total: 7 })}</h2>
+    <h2 class="h2 display-xl words-scrub">${words('Il tuo sito può rispondere già da stasera.', { total: 7 })}</h2>
     <p class="section-lead">Crei l’assistente in pochi minuti. Se non ti convince, non paghi niente.</p>
     <div class="cta-actions">
-      <a class="btn btn-primary btn-lg" href="/registrati" data-magnetic>Crea il tuo assistente ${icon('arrow', 16)}</a>
+      <a class="btn btn-white btn-lg" href="/registrati" data-magnetic>Crea il tuo assistente ${chip()}</a>
+      ${demoWidgetId ? html`<button class="btn btn-glass btn-lg" type="button" data-open-demo>Provalo adesso ${chip()}</button>` : ''}
     </div>
   </div>
 </section>`;

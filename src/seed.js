@@ -13,28 +13,28 @@ const daysAgo = (d, h = 10) => {
   return t.toISOString().replace('T', ' ').slice(0, 19);
 };
 
-function simulate(widget, questions, { day, lead } = {}) {
-  const knowledge = M.listKnowledge(widget.id);
-  const conv = M.createConversation({ widgetId: widget.id, visitorId: `v_seed_${Math.random().toString(36).slice(2)}`, pageUrl: `${widget.site_url}/`, isTest: false });
+async function simulate(widget, questions, { day, lead } = {}) {
+  const knowledge = await M.listKnowledge(widget.id);
+  const conv = await M.createConversation({ widgetId: widget.id, visitorId: `v_seed_${Math.random().toString(36).slice(2)}`, pageUrl: `${widget.site_url}/`, isTest: false });
   for (const q of questions) {
-    M.addMessage(conv.id, { role: 'visitor', body: q });
-    const r = respond({ settings: widget.settings, knowledge, message: q });
-    M.addMessage(conv.id, { role: 'bot', body: r.text, knowledgeId: r.knowledgeId, outcome: r.outcome });
-    if (r.knowledgeId) M.hitKnowledge(r.knowledgeId);
+    await M.addMessage(conv.id, { role: 'visitor', body: q });
+    const r = await respond({ settings: widget.settings, knowledge, message: q });
+    await M.addMessage(conv.id, { role: 'bot', body: r.text, knowledgeId: r.knowledgeId, outcome: r.outcome });
+    if (r.knowledgeId) await M.hitKnowledge(r.knowledgeId);
   }
-  if (lead) M.createLead({ widgetId: widget.id, conversationId: conv.id, ...lead, message: '', isTest: false });
+  if (lead) await M.createLead({ widgetId: widget.id, conversationId: conv.id, ...lead, message: '', isTest: false });
   const when = daysAgo(day, 8 + Math.floor(Math.random() * 12));
-  run(`UPDATE conversations SET started_at = ?, last_at = ? WHERE id = ?`, when, when, conv.id);
-  run(`UPDATE messages SET created_at = ? WHERE conversation_id = ?`, when, conv.id);
-  if (lead) run(`UPDATE leads SET created_at = ? WHERE conversation_id = ?`, when, conv.id);
+  await run(`UPDATE conversations SET started_at = ?, last_at = ? WHERE id = ?`, when, when, conv.id);
+  await run(`UPDATE messages SET created_at = ? WHERE conversation_id = ?`, when, conv.id);
+  if (lead) await run(`UPDATE leads SET created_at = ? WHERE conversation_id = ?`, when, conv.id);
 }
 
-function personalize(widgetId, replacements) {
-  for (const k of M.listKnowledge(widgetId)) {
+async function personalize(widgetId, replacements) {
+  for (const k of await M.listKnowledge(widgetId)) {
     let { question, answer, keywords } = k;
     for (const [from, to] of replacements) answer = answer.replace(from, to);
     answer = answer.replace(/\s*\[[^\]]*\]/g, '').trim();
-    M.updateKnowledge(k.id, { question, answer, keywords });
+    await M.updateKnowledge(k.id, { question, answer, keywords });
   }
 }
 
@@ -45,29 +45,32 @@ function personalize(widgetId, replacements) {
  * @param {boolean} o.sampleClients     crea anche i clienti di esempio con conversazioni
  * @returns {string[]} righe con le credenziali create (da mostrare solo in locale)
  */
-export function seedDatabase({ admin = 'auto', sampleClients = true } = {}) {
+const DEMO_COLOR = '#1F6FEB';
+
+export async function seedDatabase({ admin = 'auto', sampleClients = true } = {}) {
   const lines = [];
 
   // ---------- Amministratore ----------
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@aperto.local').toLowerCase();
-  if (!M.findUserByEmail(adminEmail) && (admin === 'auto' || process.env.ADMIN_PASSWORD)) {
+  if (!await M.findUserByEmail(adminEmail) && (admin === 'auto' || process.env.ADMIN_PASSWORD)) {
     const password = process.env.ADMIN_PASSWORD || randomToken(12);
-    M.createAdmin({ email: adminEmail, name: 'Amministratore', password });
+    await M.createAdmin({ email: adminEmail, name: 'Amministratore', password });
     lines.push(`Amministratore: ${adminEmail} / ${process.env.ADMIN_PASSWORD ? '(password da ADMIN_PASSWORD)' : password}  ->  ${config.baseUrl}/admin`);
   }
 
   // ---------- Assistente demo della landing (risponde su Aperto stesso) ----------
-  if (!M.getWidgetByPublicId(DEMO_WIDGET_ID)) {
-    const { accountId } = M.createAccountWithUser({
+  if (!await M.getWidgetByPublicId(DEMO_WIDGET_ID)) {
+    const { accountId } = await M.createAccountWithUser({
       company: 'Aperto (sito ufficiale)', name: 'Team Aperto', email: 'demo@aperto.local',
       password: null, plan: 'business', status: 'active', sector: 'generico', createdBy: 'admin',
     });
-    const w = M.createWidget({ accountId, name: 'Demo sito Aperto', sector: 'generico', withTemplate: false, fixedPublicId: DEMO_WIDGET_ID });
-    M.updateWidget(w.id, {
+    const w = await M.createWidget({ accountId, name: 'Demo sito Aperto', sector: 'generico', withTemplate: false, fixedPublicId: DEMO_WIDGET_ID });
+    await M.updateWidget(w.id, {
       settings: {
         title: 'Aperto',
         subtitle: 'Demo: chiedimi come funziono',
         avatarText: 'S',
+        color: DEMO_COLOR,
         welcomeMessage: 'Ciao! Sono un assistente Aperto. Fammi una domanda su prezzi, installazione o privacy: ti rispondo come farei sul tuo sito.',
         launcherLabel: '',
         quickReplies: ['Quanto costa?', 'Come si installa?', 'Funziona su WordPress?'],
@@ -87,20 +90,26 @@ export function seedDatabase({ admin = 'auto', sampleClients = true } = {}) {
       ['Sono un’agenzia, posso rivenderlo?', 'Sì, con il piano Agency gestisci fino a 25 siti di clienti da una sola dashboard e consegni ogni assistente con un link di invito.', 'agenzia rivendere clienti partner white label'],
       ['Posso disdire quando voglio?', 'Sì, il piano mensile si disdice in qualsiasi momento, senza penali.', 'disdire disdetta cancellare abbonamento'],
     ];
-    for (const [question, answer, keywords] of faq) M.addKnowledge(w.id, { question, answer, keywords });
+    for (const [question, answer, keywords] of faq) await M.addKnowledge(w.id, { question, answer, keywords });
     lines.push(`Assistente demo della landing: ${DEMO_WIDGET_ID}`);
   }
 
+  // Il sito usa il tema blu elettrico: l'assistente demo creato con il vecchio verde si aggiorna una volta sola.
+  const demo = await M.getWidgetByPublicId(DEMO_WIDGET_ID);
+  if (demo && (!demo.settings.color || demo.settings.color.toUpperCase() === '#1F5C4A')) {
+    await M.updateWidget(demo.id, { settings: { color: DEMO_COLOR } });
+  }
+
   if (sampleClients) {
-    if (!M.findUserByEmail('info@locandalemura.example')) {
-      const { accountId } = M.createAccountWithUser({
+    if (!await M.findUserByEmail('info@locandalemura.example')) {
+      const { accountId } = await M.createAccountWithUser({
         company: 'Locanda Le Mura', name: 'Giulia Ferri', email: 'info@locandalemura.example',
         password: 'demo-locanda-2026', plan: 'pro', status: 'active', sector: 'hotel', createdBy: 'self',
       });
-      const w = M.createWidget({ accountId, name: 'Locanda Le Mura', siteUrl: 'https://www.locandalemura.example', sector: 'hotel' });
-      personalize(w.id, [[/\[N\] posti auto gratuiti \/ a pagamento \(\[prezzo\] al giorno\)/, '8 posti auto gratuiti nel cortile interno'], [/\[prezzo\] a notte/, '10 € a notte'], [/\[N\] giorni prima/, '3 giorni prima'], [/\[link\]/, 'https://www.locandalemura.example/prenota']]);
-      M.updateWidget(w.id, { settings: { welcomeMessage: 'Benvenuto alla Locanda Le Mura! Chiedimi di camere, colazione, parcheggio o come prenotare.', color: '#7C2D12', avatarText: 'LM' } });
-      M.markWidgetSeen(w.id, 'https://www.locandalemura.example/camere');
+      const w = await M.createWidget({ accountId, name: 'Locanda Le Mura', siteUrl: 'https://www.locandalemura.example', sector: 'hotel' });
+      await personalize(w.id, [[/\[N\] posti auto gratuiti \/ a pagamento \(\[prezzo\] al giorno\)/, '8 posti auto gratuiti nel cortile interno'], [/\[prezzo\] a notte/, '10 € a notte'], [/\[N\] giorni prima/, '3 giorni prima'], [/\[link\]/, 'https://www.locandalemura.example/prenota']]);
+      await M.updateWidget(w.id, { settings: { welcomeMessage: 'Benvenuto alla Locanda Le Mura! Chiedimi di camere, colazione, parcheggio o come prenotare.', color: '#7C2D12', avatarText: 'LM' } });
+      await M.markWidgetSeen(w.id, 'https://www.locandalemura.example/camere');
       const sample = [
         [['A che ora è il check-in?'], 1],
         [['C’è il parcheggio?', 'grazie'], 2],
@@ -115,31 +124,31 @@ export function seedDatabase({ admin = 'auto', sampleClients = true } = {}) {
         [['parcheggio per il camper?'], 21],
         [['Colazione senza glutine?'], 25],
       ];
-      for (const [qs, day, lead] of sample) simulate(M.getWidget(w.id), qs, { day, lead });
+      for (const [qs, day, lead] of sample) await simulate(await M.getWidget(w.id), qs, { day, lead });
       lines.push('Cliente di esempio (attivo, Pro): info@locandalemura.example / demo-locanda-2026');
     }
 
-    if (!M.findUserByEmail('segreteria@studiobianchi.example')) {
-      const { accountId } = M.createAccountWithUser({
+    if (!await M.findUserByEmail('segreteria@studiobianchi.example')) {
+      const { accountId } = await M.createAccountWithUser({
         company: 'Studio Dentistico Bianchi', name: 'Dott.ssa Anna Bianchi', email: 'segreteria@studiobianchi.example',
         password: null, plan: 'start', status: 'trial', sector: 'sanita', createdBy: 'admin',
       });
-      M.createWidget({ accountId, name: 'Studio Dentistico Bianchi', siteUrl: 'https://www.studiobianchi.example', sector: 'sanita' });
-      const owner = M.findUserByEmail('segreteria@studiobianchi.example');
-      M.createInvite(owner.id);
-      run(`UPDATE accounts SET trial_ends_at = ? WHERE id = ?`, daysAgo(-3, 23), accountId);
+      await M.createWidget({ accountId, name: 'Studio Dentistico Bianchi', siteUrl: 'https://www.studiobianchi.example', sector: 'sanita' });
+      const owner = await M.findUserByEmail('segreteria@studiobianchi.example');
+      await M.createInvite(owner.id);
+      await run(`UPDATE accounts SET trial_ends_at = ? WHERE id = ?`, daysAgo(-3, 23), accountId);
       lines.push('Cliente di esempio (in prova, invito non ancora accettato): Studio Dentistico Bianchi');
     }
 
-    if (!M.findUserByEmail('ordini@pizzeriadagino.example')) {
-      const { accountId } = M.createAccountWithUser({
+    if (!await M.findUserByEmail('ordini@pizzeriadagino.example')) {
+      const { accountId } = await M.createAccountWithUser({
         company: 'Pizzeria Da Gino', name: 'Gino Esposito', email: 'ordini@pizzeriadagino.example',
         password: 'demo-pizzeria-2026', plan: 'start', status: 'trial', sector: 'ristorante', createdBy: 'self',
       });
-      const w = M.createWidget({ accountId, name: 'Pizzeria Da Gino', siteUrl: 'https://www.pizzeriadagino.example', sector: 'ristorante' });
-      run(`UPDATE accounts SET trial_ends_at = ?, created_at = ? WHERE id = ?`, daysAgo(2, 23), daysAgo(16), accountId);
-      simulate(M.getWidget(w.id), ['Fate asporto?'], { day: 5 });
-      simulate(M.getWidget(w.id), ['Siete aperti la domenica?'], { day: 7 });
+      const w = await M.createWidget({ accountId, name: 'Pizzeria Da Gino', siteUrl: 'https://www.pizzeriadagino.example', sector: 'ristorante' });
+      await run(`UPDATE accounts SET trial_ends_at = ?, created_at = ? WHERE id = ?`, daysAgo(2, 23), daysAgo(16), accountId);
+      await simulate(await M.getWidget(w.id), ['Fate asporto?'], { day: 5 });
+      await simulate(await M.getWidget(w.id), ['Siete aperti la domenica?'], { day: 7 });
       lines.push('Cliente di esempio (prova scaduta): ordini@pizzeriadagino.example / demo-pizzeria-2026');
     }
   }

@@ -1,5 +1,6 @@
-// Accesso ai dati. Tutte le query passano da qui.
-import { all, one, run, tx } from './db.js';
+// Accesso ai dati. Tutte le query passano da qui e funzionano sia su Neon Postgres sia su SQLite
+// (vedi src/db.js). Tutte le funzioni che toccano il database sono asincrone.
+import { all, insert, one, run, tx } from './db.js';
 import { config, PLANS } from './config.js';
 import { hashPassword, publicId, randomToken, sha256 } from './lib/security.js';
 import { SECTORS, defaultSettings } from './templates.js';
@@ -14,51 +15,49 @@ const daysAgo = (n) => isoIn(-n);
 // ---------------- Account e utenti ----------------
 
 export function createAccountWithUser({ company, name, email, password, plan = 'pro', status = 'trial', sector = 'generico', createdBy = 'self' }) {
-  return tx(() => {
-    const acc = run(
+  return tx(async () => {
+    const accountId = await insert(
       `INSERT INTO accounts (name, plan, status, sector, trial_ends_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
       company, plan, status, sector, status === 'trial' ? isoIn(config.trialDays) : null, createdBy,
     );
-    const accountId = Number(acc.lastInsertRowid);
-    const user = run(
+    const userId = await insert(
       `INSERT INTO users (email, name, password_hash, role, account_id) VALUES (?, ?, ?, 'client', ?)`,
       email, name, password ? hashPassword(password) : null, accountId,
     );
-    return { accountId, userId: Number(user.lastInsertRowid) };
+    return { accountId, userId };
   });
 }
 
 export function createAdmin({ email, name, password }) {
-  const r = run(`INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, 'admin')`, email, name, hashPassword(password));
-  return Number(r.lastInsertRowid);
+  return insert(`INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, 'admin')`, email, name, hashPassword(password));
 }
 
-export const findUserByEmail = (email) => one(`SELECT * FROM users WHERE email = ?`, email);
+export const findUserByEmail = (email) => one(`SELECT * FROM users WHERE lower(email) = lower(?)`, email);
 export const getUser = (id) => one(`SELECT * FROM users WHERE id = ?`, id);
 export const getAccount = (id) => one(`SELECT * FROM accounts WHERE id = ?`, id);
 export const listAccountUsers = (accountId) => all(`SELECT * FROM users WHERE account_id = ? ORDER BY id`, accountId);
 
-export function setPassword(userId, password) {
-  run(`UPDATE users SET password_hash = ? WHERE id = ?`, hashPassword(password), userId);
+export async function setPassword(userId, password) {
+  await run(`UPDATE users SET password_hash = ? WHERE id = ?`, hashPassword(password), userId);
 }
 
-export function updateUserName(userId, name) {
-  run(`UPDATE users SET name = ? WHERE id = ?`, name, userId);
+export async function updateUserName(userId, name) {
+  await run(`UPDATE users SET name = ? WHERE id = ?`, name, userId);
 }
 
-export function touchLogin(userId) {
-  run(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`, userId);
+export async function touchLogin(userId) {
+  await run(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`, userId);
 }
 
-export function updateAccount(id, fields) {
+export async function updateAccount(id, fields) {
   const allowed = ['name', 'plan', 'status', 'sector', 'trial_ends_at', 'notes'];
   const keys = Object.keys(fields).filter((k) => allowed.includes(k));
   if (!keys.length) return;
-  run(`UPDATE accounts SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...keys.map((k) => fields[k]), id);
+  await run(`UPDATE accounts SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...keys.map((k) => fields[k]), id);
 }
 
-export function deleteAccount(id) {
-  run(`DELETE FROM accounts WHERE id = ?`, id);
+export async function deleteAccount(id) {
+  await run(`DELETE FROM accounts WHERE id = ?`, id);
 }
 
 // Un account in prova scaduto viene trattato come sospeso dal widget.
@@ -73,7 +72,7 @@ export function listAccounts({ q = '', status = '' } = {}) {
   const where = [];
   const params = [];
   if (q) {
-    where.push(`(a.name LIKE ? OR EXISTS (SELECT 1 FROM users u2 WHERE u2.account_id = a.id AND u2.email LIKE ?))`);
+    where.push(`(lower(a.name) LIKE lower(?) OR EXISTS (SELECT 1 FROM users u2 WHERE u2.account_id = a.id AND lower(u2.email) LIKE lower(?)))`);
     params.push(`%${q}%`, `%${q}%`);
   }
   if (status) {
@@ -84,7 +83,7 @@ export function listAccounts({ q = '', status = '' } = {}) {
     `SELECT a.*,
        (SELECT email FROM users u WHERE u.account_id = a.id ORDER BY u.id LIMIT 1) AS owner_email,
        (SELECT name FROM users u WHERE u.account_id = a.id ORDER BY u.id LIMIT 1) AS owner_name,
-       (SELECT last_login_at FROM users u WHERE u.account_id = a.id ORDER BY u.last_login_at DESC LIMIT 1) AS last_login_at,
+       (SELECT last_login_at FROM users u WHERE u.account_id = a.id ORDER BY u.last_login_at DESC NULLS LAST LIMIT 1) AS last_login_at,
        (SELECT COUNT(*) FROM widgets w WHERE w.account_id = a.id) AS widget_count,
        (SELECT COUNT(*) FROM conversations c JOIN widgets w ON w.id = c.widget_id
           WHERE w.account_id = a.id AND c.is_test = 0 AND c.started_at >= ?) AS conv_month
@@ -96,41 +95,41 @@ export function listAccounts({ q = '', status = '' } = {}) {
 
 // ---------------- Sessioni e inviti ----------------
 
-export function createSession(userId, impersonatorId = null) {
+export async function createSession(userId, impersonatorId = null) {
   const token = randomToken();
-  run(
+  await run(
     `INSERT INTO sessions (token_hash, user_id, impersonator_id, expires_at) VALUES (?, ?, ?, ?)`,
     sha256(token), userId, impersonatorId, isoIn(config.sessionDays),
   );
   return token;
 }
 
-export function getSession(token) {
+export async function getSession(token) {
   if (!token) return null;
-  const s = one(`SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')`, sha256(token));
+  const s = await one(`SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')`, sha256(token));
   if (!s) return null;
-  const user = getUser(s.user_id);
+  const user = await getUser(s.user_id);
   if (!user) return null;
-  return { ...s, user, impersonator: s.impersonator_id ? getUser(s.impersonator_id) : null };
+  return { ...s, user, impersonator: s.impersonator_id ? await getUser(s.impersonator_id) : null };
 }
 
 export const deleteSession = (token) => run(`DELETE FROM sessions WHERE token_hash = ?`, sha256(token || ''));
 export const deleteUserSessions = (userId) => run(`DELETE FROM sessions WHERE user_id = ?`, userId);
 
-export function createInvite(userId) {
+export async function createInvite(userId) {
   const token = randomToken(24);
-  run(`DELETE FROM invites WHERE user_id = ? AND used_at IS NULL`, userId);
-  run(`INSERT INTO invites (token_hash, user_id, expires_at) VALUES (?, ?, ?)`, sha256(token), userId, isoIn(config.inviteDays));
+  await run(`DELETE FROM invites WHERE user_id = ? AND used_at IS NULL`, userId);
+  await run(`INSERT INTO invites (token_hash, user_id, expires_at) VALUES (?, ?, ?)`, sha256(token), userId, isoIn(config.inviteDays));
   return token;
 }
 
-export function getInvite(token) {
+export async function getInvite(token) {
   if (!token) return null;
-  const inv = one(
+  const inv = await one(
     `SELECT * FROM invites WHERE token_hash = ? AND used_at IS NULL AND expires_at > datetime('now')`,
     sha256(token),
   );
-  return inv ? { ...inv, user: getUser(inv.user_id) } : null;
+  return inv ? { ...inv, user: await getUser(inv.user_id) } : null;
 }
 
 export function pendingInvite(userId) {
@@ -138,11 +137,11 @@ export function pendingInvite(userId) {
 }
 
 export function consumeInvite(token, password) {
-  return tx(() => {
-    const inv = getInvite(token);
+  return tx(async () => {
+    const inv = await getInvite(token);
     if (!inv) return null;
-    run(`UPDATE invites SET used_at = datetime('now') WHERE token_hash = ?`, inv.token_hash);
-    setPassword(inv.user_id, password);
+    await run(`UPDATE invites SET used_at = datetime('now') WHERE token_hash = ?`, inv.token_hash);
+    await setPassword(inv.user_id, password);
     return inv.user;
   });
 }
@@ -154,56 +153,57 @@ function hydrateWidget(row) {
   return { ...row, settings: JSON.parse(row.settings || '{}'), allowed_domains: JSON.parse(row.allowed_domains || '[]') };
 }
 
-export function createWidget({ accountId, name, siteUrl = '', sector = 'generico', withTemplate = true, fixedPublicId = null }) {
-  const acc = getAccount(accountId);
+export async function createWidget({ accountId, name, siteUrl = '', sector = 'generico', withTemplate = true, fixedPublicId = null }) {
+  const acc = await getAccount(accountId);
   const plan = PLANS[acc?.plan] || PLANS.pro;
   const settings = defaultSettings({ name, sector, showBranding: plan.branding });
   if (!withTemplate) settings.quickReplies = [];
   const domains = domainFromUrl(siteUrl) ? [domainFromUrl(siteUrl)] : [];
-  return tx(() => {
-    const r = run(
+  return tx(async () => {
+    const widgetId = await insert(
       `INSERT INTO widgets (public_id, account_id, name, site_url, allowed_domains, settings) VALUES (?, ?, ?, ?, ?, ?)`,
       fixedPublicId || publicId('wdg'), accountId, name, siteUrl, JSON.stringify(domains), JSON.stringify(settings),
     );
-    const widgetId = Number(r.lastInsertRowid);
     if (withTemplate) {
       for (const [question, answer, keywords] of (SECTORS[sector] || SECTORS.generico).faq) {
-        run(`INSERT INTO knowledge (widget_id, question, answer, keywords) VALUES (?, ?, ?, ?)`, widgetId, question, answer, keywords);
+        await run(`INSERT INTO knowledge (widget_id, question, answer, keywords) VALUES (?, ?, ?, ?)`, widgetId, question, answer, keywords);
       }
     }
     return getWidget(widgetId);
   });
 }
 
-export const getWidget = (id) => hydrateWidget(one(`SELECT * FROM widgets WHERE id = ?`, id));
-export const getWidgetByPublicId = (pid) => hydrateWidget(one(`SELECT * FROM widgets WHERE public_id = ?`, pid));
+export const getWidget = async (id) => hydrateWidget(await one(`SELECT * FROM widgets WHERE id = ?`, id));
+export const getWidgetByPublicId = async (pid) => hydrateWidget(await one(`SELECT * FROM widgets WHERE public_id = ?`, pid));
 
-export function listWidgets(accountId) {
-  return all(
+export async function listWidgets(accountId) {
+  const rows = await all(
     `SELECT w.*,
        (SELECT COUNT(*) FROM knowledge k WHERE k.widget_id = w.id) AS knowledge_count,
        (SELECT COUNT(*) FROM conversations c WHERE c.widget_id = w.id AND c.is_test = 0 AND c.started_at >= ?) AS conv_30d,
        (SELECT COUNT(*) FROM leads l WHERE l.widget_id = w.id AND l.is_test = 0 AND l.created_at >= ?) AS leads_30d
      FROM widgets w WHERE w.account_id = ? ORDER BY w.created_at, w.id`,
     daysAgo(30), daysAgo(30), accountId,
-  ).map(hydrateWidget);
+  );
+  return rows.map(hydrateWidget);
 }
 
-export function listAllWidgets() {
-  return all(
+export async function listAllWidgets() {
+  const rows = await all(
     `SELECT w.*, a.name AS account_name, a.status AS account_status, a.plan AS account_plan,
        (SELECT COUNT(*) FROM knowledge k WHERE k.widget_id = w.id) AS knowledge_count,
        (SELECT COUNT(*) FROM conversations c WHERE c.widget_id = w.id AND c.is_test = 0 AND c.started_at >= ?) AS conv_30d,
        (SELECT COUNT(*) FROM leads l WHERE l.widget_id = w.id AND l.is_test = 0 AND l.created_at >= ?) AS leads_30d
      FROM widgets w JOIN accounts a ON a.id = w.account_id ORDER BY w.created_at DESC, w.id DESC`,
     daysAgo(30), daysAgo(30),
-  ).map(hydrateWidget);
+  );
+  return rows.map(hydrateWidget);
 }
 
-export function updateWidget(id, { name, siteUrl, allowedDomains, settings, status }) {
-  const w = getWidget(id);
+export async function updateWidget(id, { name, siteUrl, allowedDomains, settings, status }) {
+  const w = await getWidget(id);
   if (!w) return null;
-  run(
+  await run(
     `UPDATE widgets SET name = ?, site_url = ?, allowed_domains = ?, settings = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
     name ?? w.name,
     siteUrl ?? w.site_url,
@@ -216,11 +216,11 @@ export function updateWidget(id, { name, siteUrl, allowedDomains, settings, stat
 }
 
 export const deleteWidget = (id) => run(`DELETE FROM widgets WHERE id = ?`, id);
-export const countWidgets = (accountId) => one(`SELECT COUNT(*) AS n FROM widgets WHERE account_id = ?`, accountId).n;
+export const countWidgets = async (accountId) => (await one(`SELECT COUNT(*) AS n FROM widgets WHERE account_id = ?`, accountId)).n;
 
-export function markWidgetSeen(id, pageUrl) {
+export async function markWidgetSeen(id, pageUrl) {
   // Un messaggio senza pagina (es. inviato da un'app) non cancella l'ultima pagina nota.
-  run(
+  await run(
     `UPDATE widgets SET last_seen_at = datetime('now'), last_seen_url = COALESCE(NULLIF(?, ''), last_seen_url) WHERE id = ?`,
     String(pageUrl || '').slice(0, 500), id,
   );
@@ -241,11 +241,11 @@ export const listKnowledge = (widgetId) => all(`SELECT * FROM knowledge WHERE wi
 export const getKnowledge = (id) => one(`SELECT * FROM knowledge WHERE id = ?`, id);
 
 export function addKnowledge(widgetId, { question, answer, keywords = '' }) {
-  return Number(run(`INSERT INTO knowledge (widget_id, question, answer, keywords) VALUES (?, ?, ?, ?)`, widgetId, question, answer, keywords).lastInsertRowid);
+  return insert(`INSERT INTO knowledge (widget_id, question, answer, keywords) VALUES (?, ?, ?, ?)`, widgetId, question, answer, keywords);
 }
 
-export function updateKnowledge(id, { question, answer, keywords = '' }) {
-  run(`UPDATE knowledge SET question = ?, answer = ?, keywords = ?, updated_at = datetime('now') WHERE id = ?`, question, answer, keywords, id);
+export async function updateKnowledge(id, { question, answer, keywords = '' }) {
+  await run(`UPDATE knowledge SET question = ?, answer = ?, keywords = ?, updated_at = datetime('now') WHERE id = ?`, question, answer, keywords, id);
 }
 
 export const deleteKnowledge = (id) => run(`DELETE FROM knowledge WHERE id = ?`, id);
@@ -270,21 +270,21 @@ export function getConversation(widgetId, conversationPublicId) {
   return one(`SELECT * FROM conversations WHERE widget_id = ? AND public_id = ?`, widgetId, conversationPublicId);
 }
 
-export function createConversation({ widgetId, visitorId, pageUrl, isTest }) {
+export async function createConversation({ widgetId, visitorId, pageUrl, isTest }) {
   const pid = publicId('cnv', 16);
-  run(
+  await run(
     `INSERT INTO conversations (public_id, widget_id, visitor_id, page_url, is_test) VALUES (?, ?, ?, ?, ?)`,
     pid, widgetId, visitorId, String(pageUrl || '').slice(0, 500), isTest ? 1 : 0,
   );
   return getConversation(widgetId, pid);
 }
 
-export function addMessage(conversationId, { role, body, knowledgeId = null, outcome = '' }) {
-  run(
+export async function addMessage(conversationId, { role, body, knowledgeId = null, outcome = '' }) {
+  await run(
     `INSERT INTO messages (conversation_id, role, body, knowledge_id, outcome) VALUES (?, ?, ?, ?, ?)`,
     conversationId, role, body, knowledgeId, outcome,
   );
-  run(
+  await run(
     `UPDATE conversations SET message_count = message_count + 1, last_at = datetime('now'),
        unanswered = unanswered + ? WHERE id = ?`,
     outcome === 'fallback' ? 1 : 0, conversationId,
@@ -305,22 +305,23 @@ export function listConversations(widgetId, { filter = 'all', limit = 100, inclu
 
 export const listMessages = (conversationId) => all(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY id`, conversationId);
 
-export function accountConversationsThisMonth(accountId) {
-  return one(
+export async function accountConversationsThisMonth(accountId) {
+  const r = await one(
     `SELECT COUNT(*) AS n FROM conversations c JOIN widgets w ON w.id = c.widget_id
      WHERE w.account_id = ? AND c.is_test = 0 AND c.started_at >= ?`,
     accountId, monthStart(),
-  ).n;
+  );
+  return r.n;
 }
 
 // ---------------- Contatti (lead) ----------------
 
-export function createLead({ widgetId, conversationId, name, email, phone, message, isTest }) {
-  const id = Number(run(
+export async function createLead({ widgetId, conversationId, name, email, phone, message, isTest }) {
+  const id = await insert(
     `INSERT INTO leads (widget_id, conversation_id, name, email, phone, message, is_test) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     widgetId, conversationId, name, email, phone, message, isTest ? 1 : 0,
-  ).lastInsertRowid);
-  if (conversationId) run(`UPDATE conversations SET has_lead = 1 WHERE id = ?`, conversationId);
+  );
+  if (conversationId) await run(`UPDATE conversations SET has_lead = 1 WHERE id = ?`, conversationId);
   return id;
 }
 
@@ -331,8 +332,10 @@ export function listLeads({ accountId, widgetId, status = '', limit = 500 }) {
   if (widgetId) { where.push('l.widget_id = ?'); params.push(widgetId); }
   if (status) { where.push('l.status = ?'); params.push(status); }
   return all(
-    `SELECT l.*, w.name AS widget_name, w.public_id AS widget_public_id, c.public_id AS conversation_public_id
-     FROM leads l JOIN widgets w ON w.id = l.widget_id LEFT JOIN conversations c ON c.id = l.conversation_id
+    `SELECT l.*, w.name AS widget_name, w.public_id AS widget_public_id, c.public_id AS conversation_public_id,
+       a.name AS account_name
+     FROM leads l JOIN widgets w ON w.id = l.widget_id JOIN accounts a ON a.id = w.account_id
+     LEFT JOIN conversations c ON c.id = l.conversation_id
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
     ...params, limit,
   );
@@ -343,32 +346,32 @@ export const setLeadStatus = (id, status) => run(`UPDATE leads SET status = ? WH
 
 // ---------------- Statistiche ----------------
 
-export function widgetStats(widgetId, days = 30) {
+export async function widgetStats(widgetId, days = 30) {
   const since = daysAgo(days);
-  const c = one(
+  const c = await one(
     `SELECT COUNT(*) AS conversations, COALESCE(SUM(message_count), 0) AS messages,
        COALESCE(SUM(CASE WHEN unanswered > 0 THEN 1 ELSE 0 END), 0) AS with_unanswered
      FROM conversations WHERE widget_id = ? AND is_test = 0 AND started_at >= ?`,
     widgetId, since,
   );
-  const answers = one(
+  const answers = await one(
     `SELECT COALESCE(SUM(CASE WHEN m.outcome = 'answered' THEN 1 ELSE 0 END), 0) AS answered,
        COALESCE(SUM(CASE WHEN m.outcome = 'fallback' THEN 1 ELSE 0 END), 0) AS fallback
      FROM messages m JOIN conversations c ON c.id = m.conversation_id
      WHERE c.widget_id = ? AND c.is_test = 0 AND m.created_at >= ? AND m.role = 'bot'`,
     widgetId, since,
   );
-  const leads = one(`SELECT COUNT(*) AS n FROM leads WHERE widget_id = ? AND is_test = 0 AND created_at >= ?`, widgetId, since).n;
+  const leads = (await one(`SELECT COUNT(*) AS n FROM leads WHERE widget_id = ? AND is_test = 0 AND created_at >= ?`, widgetId, since)).n;
   const asked = answers.answered + answers.fallback;
   return { ...c, ...answers, leads, answerRate: asked ? answers.answered / asked : null };
 }
 
-export function dailyConversations(widgetIds, days = 30) {
+export async function dailyConversations(widgetIds, days = 30) {
   if (!widgetIds.length) return [];
-  const rows = all(
-    `SELECT date(started_at) AS day, COUNT(*) AS n FROM conversations
+  const rows = await all(
+    `SELECT substr(started_at, 1, 10) AS day, COUNT(*) AS n FROM conversations
      WHERE widget_id IN (${widgetIds.map(() => '?').join(',')}) AND is_test = 0 AND started_at >= ?
-     GROUP BY day`,
+     GROUP BY substr(started_at, 1, 10)`,
     ...widgetIds, daysAgo(days),
   );
   const map = new Map(rows.map((r) => [r.day, r.n]));
@@ -380,8 +383,8 @@ export function dailyConversations(widgetIds, days = 30) {
   return out;
 }
 
-export function platformStats() {
-  const accounts = all(`SELECT status, plan, trial_ends_at FROM accounts`);
+export async function platformStats() {
+  const accounts = await all(`SELECT status, plan, trial_ends_at FROM accounts`);
   const now = isoIn(0);
   let mrr = 0;
   const byStatus = { trial: 0, active: 0, suspended: 0, expired: 0 };
@@ -391,15 +394,16 @@ export function platformStats() {
     else byStatus[a.status] = (byStatus[a.status] || 0) + 1;
   }
   const month = monthStart();
+  const count = async (sql, ...p) => (await one(sql, ...p)).n;
   return {
     accounts: accounts.length,
     byStatus,
     mrr,
-    widgets: one(`SELECT COUNT(*) AS n FROM widgets`).n,
-    widgetsLive: one(`SELECT COUNT(*) AS n FROM widgets WHERE last_seen_at >= ?`, daysAgo(7)).n,
-    conversationsMonth: one(`SELECT COUNT(*) AS n FROM conversations WHERE is_test = 0 AND started_at >= ?`, month).n,
-    leadsMonth: one(`SELECT COUNT(*) AS n FROM leads WHERE is_test = 0 AND created_at >= ?`, month).n,
-    trialsEndingSoon: all(
+    widgets: await count(`SELECT COUNT(*) AS n FROM widgets`),
+    widgetsLive: await count(`SELECT COUNT(*) AS n FROM widgets WHERE last_seen_at >= ?`, daysAgo(7)),
+    conversationsMonth: await count(`SELECT COUNT(*) AS n FROM conversations WHERE is_test = 0 AND started_at >= ?`, month),
+    leadsMonth: await count(`SELECT COUNT(*) AS n FROM leads WHERE is_test = 0 AND created_at >= ?`, month),
+    trialsEndingSoon: await all(
       `SELECT a.*, (SELECT email FROM users u WHERE u.account_id = a.id ORDER BY u.id LIMIT 1) AS owner_email
        FROM accounts a WHERE a.status = 'trial' AND a.trial_ends_at BETWEEN ? AND ? ORDER BY a.trial_ends_at`,
       now, isoIn(5),
@@ -407,8 +411,8 @@ export function platformStats() {
   };
 }
 
-export function allWidgetIds() {
-  return all(`SELECT id FROM widgets`).map((r) => r.id);
+export async function allWidgetIds() {
+  return (await all(`SELECT id FROM widgets`)).map((r) => r.id);
 }
 
 export function recentConversations(limit = 10) {

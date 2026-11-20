@@ -445,6 +445,16 @@ details[open]::details-content { block-size: auto; }
 /* Copia: conferma visiva */
 .btn.is-copied { animation: pop .4s var(--spring); }
 
+/* Conversazioni in tempo reale (Neon Realtime) */
+.live-pill { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; color: var(--muted); background: var(--panel); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #b9b6ad; }
+.live-pill[data-state="live"] { color: var(--ok-ink); border-color: #bcd6c6; background: var(--ok-bg); }
+.live-pill[data-state="live"] .live-dot { background: var(--ok-ink); animation: live-breathe 2s ease-in-out infinite; }
+.live-pill[data-state="error"] .live-dot { background: #c27c0e; }
+@keyframes live-breathe { 50% { box-shadow: 0 0 0 5px rgba(29, 90, 64, .16); } }
+#conv-list.live-flash tbody tr:first-child { animation: live-row 1.4s var(--ease); }
+@keyframes live-row { from { background: var(--ok-bg); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }

@@ -1,6 +1,7 @@
 // Pagine di gestione di un singolo assistente (usate da cliente e admin).
 import { config, PLANS } from '../config.js';
 import { fmtDateTime, fmtNum, html, raw, timeAgo } from '../lib/html.js';
+import { aiConfigured } from '../lib/ai.js';
 import { SECTORS } from '../templates.js';
 import {
   copyField, hasPlaceholder, hostedUrl, installStatus, outcomeLabel, pct, snippetFor, statCard, widgetStatusBadge,
@@ -236,6 +237,14 @@ export function appearancePage(ctx, { widget, account }) {
           ${textarea({ label: 'Domande suggerite', name: 'quickReplies', value: (s.quickReplies || []).join('\n'), rows: 4, maxlength: 400, hint: 'Una per riga, massimo 4. Compaiono come pulsanti all’inizio della chat.', attrs: raw('data-setting="quickReplies"') })}
           ${textarea({ label: 'Quando non trova una risposta', name: 'fallbackMessage', value: s.fallbackMessage, required: true, rows: 3, maxlength: 400 })}
         </section>
+        ${aiConfigured() ? html`<section class="panel stack">
+          <h2 class="panel-title">Come risponde</h2>
+          ${select({
+            label: 'Motore delle risposte', name: 'engine', value: s.engine === 'ai' ? 'ai' : 'faq',
+            options: [['faq', 'Solo le risposte che hai scritto tu'], ['ai', 'AI (beta): riformula con parole sue, usando solo le tue risposte']],
+            hint: 'Con l’AI l’assistente capisce più modi di fare la stessa domanda, ma non inventa: se l’informazione non è tra le tue risposte, propone il contatto. Se l’AI non è disponibile, usa automaticamente le tue risposte.',
+          })}
+        </section>` : ''}
         <section class="panel stack">
           <h2 class="panel-title">Raccolta contatti</h2>
           ${checkbox({ label: 'Proponi di lasciare i recapiti quando l’assistente non sa rispondere o il visitatore chiede una persona', name: 'leadCapture', checked: s.leadCapture })}
@@ -313,7 +322,7 @@ export function installPage(ctx, { widget }) {
 }
 
 // ---------------- Conversazioni ----------------
-export function conversationsPage({ widget, conversations, filter, showTest }) {
+export function conversationsPage({ widget, conversations, filter, showTest, live = null }) {
   const base = `/app/widgets/${widget.id}/conversazioni`;
   const filters = [['all', 'Tutte'], ['unanswered', 'Con domande senza risposta'], ['leads', 'Con contatto lasciato']];
   const q = (f, t) => `${base}?filtro=${f}${t ? '&prove=1' : ''}`;
@@ -323,8 +332,9 @@ export function conversationsPage({ widget, conversations, filter, showTest }) {
         ${filters.map(([f, l]) => html`<a class="${filter === f ? 'is-active' : ''}" href="${q(f, showTest)}"${filter === f ? raw(' aria-current="true"') : ''}>${l}</a>`)}
       </div>
       <a class="link small" href="${q(filter, !showTest)}">${showTest ? 'Nascondi le conversazioni di prova' : 'Mostra anche le conversazioni di prova'}</a>
+      ${live ? html`<span class="live-pill" data-live-url="${live.url}" data-live-endpoint="${live.endpoint}" data-state="connecting" role="status" aria-live="polite"><span class="live-dot" aria-hidden="true"></span><span class="live-label">Collegamento…</span></span>` : ''}
     </div>
-    ${conversations.length
+    <div id="conv-list">${conversations.length
       ? html`<div class="table-wrap"><table class="table">
           <thead><tr><th scope="col">Prima domanda</th><th scope="col">Pagina</th><th scope="col" class="num">Messaggi</th><th scope="col">Esito</th><th scope="col">Ultimo messaggio</th></tr></thead>
           <tbody>${conversations.map((c) => html`<tr>
@@ -337,7 +347,7 @@ export function conversationsPage({ widget, conversations, filter, showTest }) {
         </table></div>`
       : html`<div class="panel">${filter === 'all'
           ? html`<p class="muted">Ancora nessuna conversazione${showTest ? '' : ' reale'}. Quando un visitatore scrive all’assistente, la trovi qui.</p>`
-          : html`<p class="muted">Nessuna conversazione con questo filtro.</p>`}</div>`}`;
+          : html`<p class="muted">Nessuna conversazione con questo filtro.</p>`}</div>`}</div>`;
 }
 
 function pathOf(url) {

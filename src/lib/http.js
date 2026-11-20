@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { SafeHtml } from './html.js';
+import { realtimeOrigin } from './realtime.js';
 
 export class HttpError extends Error {
   constructor(status, message, { expose = true } = {}) {
@@ -122,7 +123,7 @@ export function securityHeaders(res, { frameable = false } = {}) {
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
-      "connect-src 'self'",
+      ["connect-src 'self'", realtimeOrigin()].filter(Boolean).join(' '),
       "form-action 'self'",
       "base-uri 'none'",
       "object-src 'none'",

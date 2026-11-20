@@ -49,7 +49,7 @@ export function createApp() {
 
       const isApi = ctx.path.startsWith('/api/');
       if (!isApi || ctx.path.startsWith('/api/app/')) {
-        loadSession(ctx);
+        await loadSession(ctx);
         if (ctx.method === 'POST') verifyCsrf(ctx);
       }
 
@@ -69,8 +69,8 @@ export function createApp() {
   };
 }
 
-export function startServer(port = config.port) {
-  openDb();
+export async function startServer(port = config.port) {
+  await openDb();
   const server = http.createServer(createApp());
   server.headersTimeout = 20000;
   server.requestTimeout = 30000;

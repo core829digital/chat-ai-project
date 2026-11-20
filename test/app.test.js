@@ -19,11 +19,11 @@ let server;
 
 before(async () => {
   server = await startServer(PORT);
-  M.createAdmin({ email: 'admin@test.local', name: 'Admin', password: 'admin-password-123' });
+  await M.createAdmin({ email: 'admin@test.local', name: 'Admin', password: 'admin-password-123' });
 });
-after(() => {
+after(async () => {
   server.close();
-  closeDb();
+  await closeDb();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -112,8 +112,8 @@ test('creazione assistente con modello di settore', async () => {
   const r = await client.post('/app/widgets', { name: 'Hotel Prova', siteUrl: 'https://www.hotelprova.example', sector: 'hotel', withTemplate: '1' });
   assert.equal(r.status, 303);
   const id = Number(r.location.match(/\/app\/widgets\/(\d+)\/risposte/)[1]);
-  widget = M.getWidget(id);
-  assert.equal(M.listKnowledge(id).length, SECTOR_HOTEL_COUNT);
+  widget = (await M.getWidget(id));
+  assert.equal((await M.listKnowledge(id)).length, SECTOR_HOTEL_COUNT);
   assert.deepEqual(widget.allowed_domains, ['hotelprova.example']);
   const kb = await client.get(`/app/widgets/${id}/risposte`);
   assert.match(kb.text, /Da completare/);
@@ -169,7 +169,7 @@ test('widget: conversazione con risposta, fallback e richiesta di una persona', 
   const empty = await widgetApi(widget.public_id, '/messages', { visitorId: 'v1', text: '   ' }, origin);
   assert.equal(empty.status, 400);
 
-  const w = M.getWidget(widget.id);
+  const w = (await M.getWidget(widget.id));
   assert.ok(w.last_seen_at, 'il widget risulta installato');
   assert.equal(w.last_seen_url, `${origin}/camere`);
 });
@@ -212,11 +212,11 @@ test('risposte: aggiunta, modifica, uso immediato e escape HTML', async () => {
   const r = await widgetApi(widget.public_id, '/messages', { visitorId: 'v2', text: 'c’è una piscina?' }, 'https://hotelprova.example');
   assert.match(r.data.reply.text, /piscina coperta aperta/);
 
-  const k = M.listKnowledge(widget.id).at(-1);
+  const k = (await M.listKnowledge(widget.id)).at(-1);
   await client.post(`/app/widgets/${widget.id}/risposte/${k.id}`, { question: 'Avete la piscina?', answer: 'Sì, aperta tutto l’anno.', keywords: 'piscina' });
-  assert.equal(M.getKnowledge(k.id).answer, 'Sì, aperta tutto l’anno.');
+  assert.equal((await M.getKnowledge(k.id)).answer, 'Sì, aperta tutto l’anno.');
   await client.post(`/app/widgets/${widget.id}/risposte/${k.id}/elimina`);
-  assert.equal(M.getKnowledge(k.id), undefined);
+  assert.equal((await M.getKnowledge(k.id)), undefined);
 });
 
 test('aspetto: salvataggio e validazione', async () => {
@@ -226,7 +226,7 @@ test('aspetto: salvataggio e validazione', async () => {
     leadCapture: '1', privacyUrl: 'https://hotelprova.example/privacy',
   });
   assert.equal(r.status, 303);
-  const s = M.getWidget(widget.id).settings;
+  const s = (await M.getWidget(widget.id)).settings;
   assert.equal(s.color, '#123ABC');
   assert.equal(s.position, 'left');
   assert.equal(s.avatarText, 'HP');
@@ -234,7 +234,7 @@ test('aspetto: salvataggio e validazione', async () => {
   assert.equal(s.askPhone, false);
 
   await client.post(`/app/widgets/${widget.id}/aspetto`, { name: 'Hotel Prova', title: 'X', welcomeMessage: 'Y', fallbackMessage: 'Z', color: 'javascript:alert(1)', privacyUrl: 'javascript:alert(1)' });
-  const after = M.getWidget(widget.id).settings;
+  const after = (await M.getWidget(widget.id)).settings;
   assert.equal(after.color, '#123ABC', 'colore non valido ignorato');
   assert.equal(after.privacyUrl, 'https://hotelprova.example/privacy', 'link privacy non valido rifiutato');
 });
@@ -245,7 +245,7 @@ test('un cliente non vede né admin né assistenti di altri', async () => {
   assert.equal((await other.get(`/app/widgets/${widget.id}`)).status, 404);
   assert.equal((await other.post(`/app/widgets/${widget.id}/risposte`, { question: 'x', answer: 'y' })).status, 404);
   assert.equal((await other.get('/admin')).status, 404);
-  const lead = M.listLeads({ widgetId: widget.id })[0];
+  const lead = (await M.listLeads({ widgetId: widget.id }))[0];
   assert.equal((await other.post(`/app/leads/${lead.id}/stato`, { status: 'closed' })).status, 404);
 });
 
@@ -288,7 +288,7 @@ test('admin: crea cliente con assistente e link di invito, il cliente lo attiva'
   const again = await admin.get(r.location);
   assert.ok(!again.text.includes(link), 'il link si vede una volta sola');
 
-  const account = M.listAccounts({ q: 'Il Ponte' })[0];
+  const account = (await M.listAccounts({ q: 'Il Ponte' }))[0];
   assert.equal(account.plan, 'start');
   assert.equal(account.widget_count, 1);
 
@@ -308,7 +308,7 @@ test('admin: crea cliente con assistente e link di invito, il cliente lo attiva'
 test('admin: accesso come cliente e ritorno', async () => {
   const admin = new Client();
   await admin.post('/accedi', { email: 'admin@test.local', password: 'admin-password-123' });
-  const account = M.listAccounts({ q: 'Hotel Prova' })[0];
+  const account = (await M.listAccounts({ q: 'Hotel Prova' }))[0];
   const imp = await admin.post(`/admin/accounts/${account.id}/impersonate`);
   assert.equal(imp.location, '/app');
   const home = await admin.get('/app');
@@ -323,9 +323,9 @@ test('admin: accesso come cliente e ritorno', async () => {
 test('admin: cambio piano, sospensione e prova scaduta bloccano il widget', async () => {
   const admin = new Client();
   await admin.post('/accedi', { email: 'admin@test.local', password: 'admin-password-123' });
-  const account = M.listAccounts({ q: 'Hotel Prova' })[0];
+  const account = (await M.listAccounts({ q: 'Hotel Prova' }))[0];
   await admin.post(`/admin/accounts/${account.id}`, { name: account.name, plan: 'business', status: 'suspended', sector: 'hotel' });
-  assert.equal(M.getAccount(account.id).plan, 'business');
+  assert.equal((await M.getAccount(account.id)).plan, 'business');
   assert.equal((await widgetApi(widget.public_id, '/config')).data.active, false);
   await admin.post(`/admin/accounts/${account.id}`, { name: account.name, plan: 'business', status: 'trial', trialEnds: '2020-01-01', sector: 'hotel' });
   assert.equal((await widgetApi(widget.public_id, '/config')).data.active, false, 'prova scaduta');
@@ -340,12 +340,12 @@ test('admin: cambio piano, sospensione e prova scaduta bloccano il widget', asyn
 test('admin: eliminazione cliente con conferma', async () => {
   const admin = new Client();
   await admin.post('/accedi', { email: 'admin@test.local', password: 'admin-password-123' });
-  const account = M.listAccounts({ q: 'Altro' })[0];
+  const account = (await M.listAccounts({ q: 'Altro' }))[0];
   await admin.post(`/admin/accounts/${account.id}/elimina`, { confirm: 'sbagliato' });
-  assert.ok(M.getAccount(account.id));
+  assert.ok((await M.getAccount(account.id)));
   await admin.post(`/admin/accounts/${account.id}/elimina`, { confirm: 'Altro' });
-  assert.equal(M.getAccount(account.id), undefined);
-  assert.equal(M.findUserByEmail('altro@example.com'), undefined);
+  assert.equal((await M.getAccount(account.id)), undefined);
+  assert.equal((await M.findUserByEmail('altro@example.com')), undefined);
 });
 
 test('pagina chat ospitata e plugin WordPress', async () => {

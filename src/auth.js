@@ -8,8 +8,8 @@ export const SESSION_COOKIE = 'sp_session';
 export const CSRF_COOKIE = 'sp_csrf';
 const FLASH_COOKIE = 'sp_flash';
 
-export function loadSession(ctx) {
-  const session = M.getSession(ctx.cookies[SESSION_COOKIE]);
+export async function loadSession(ctx) {
+  const session = await M.getSession(ctx.cookies[SESSION_COOKIE]);
   if (session) {
     ctx.session = session;
     ctx.user = session.user;
@@ -43,13 +43,13 @@ export function verifyCsrf(ctx) {
   }
 }
 
-export function startSession(ctx, userId, impersonatorId = null) {
-  const token = M.createSession(userId, impersonatorId);
+export async function startSession(ctx, userId, impersonatorId = null) {
+  const token = await M.createSession(userId, impersonatorId);
   ctx.setCookie(SESSION_COOKIE, token, { maxAge: config.sessionDays * 86400 });
 }
 
-export function endSession(ctx) {
-  M.deleteSession(ctx.cookies[SESSION_COOKIE]);
+export async function endSession(ctx) {
+  await M.deleteSession(ctx.cookies[SESSION_COOKIE]);
   ctx.clearCookie(SESSION_COOKIE);
 }
 
@@ -70,8 +70,8 @@ export function canManageAccount(user, accountId) {
   return Boolean(user && (user.role === 'admin' || user.account_id === accountId));
 }
 
-export function loadOwnedWidget(ctx, id) {
-  const widget = M.getWidget(Number(id));
+export async function loadOwnedWidget(ctx, id) {
+  const widget = await M.getWidget(Number(id));
   if (!widget || !canManageAccount(ctx.user, widget.account_id)) throw new HttpError(404, 'Widget non trovato');
   return widget;
 }
