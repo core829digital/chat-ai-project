@@ -318,13 +318,13 @@ try {
     scrollTo({ top: top + (s.offsetHeight - innerHeight) * ${p}, behavior: 'instant' });
     await new Promise(r => setTimeout(r, 900));
     const c = document.querySelector('[data-field=sky]');
-    const px = c.getContext('2d').getImageData(4, 4, 1, 1).data;
+    const px = c.getContext('2d').getImageData(4, 4, 1, 1).data; const hz = c.getContext('2d').getImageData(Math.round(c.width * 0.3), Math.round(c.height * 0.93), 1, 1).data;
     return { clock: document.querySelector('[data-clock]').textContent,
       day: document.querySelector('.story-sticky').classList.contains('is-day'),
       chapter: [...document.querySelectorAll('[data-chapter]')].findIndex(l => l.classList.contains('is-active')),
       msgs: document.querySelectorAll('.sb-msg.is-on').length, lead: !!document.querySelector('.sb-lead.is-on'),
       notes: document.querySelectorAll('.sp-note.is-on').length, answered: document.querySelector('[data-answered]').textContent,
-      sky: px[0] + px[1] + px[2] };
+      sky: px[0] + px[1] + px[2], horizon: hz[0] + hz[1] + hz[2], warm: hz[0] - hz[2] };
   })()`);
   const s0 = await storyAt(0.02);
   check(s0.clock === '22:40' && s0.chapter === 0 && s0.msgs === 0 && !s0.day, `storia, inizio: 22:40, notte, nessun messaggio (${JSON.stringify(s0)})`);
@@ -337,7 +337,9 @@ try {
   await shot('16-storia-contatto');
   const s3 = await storyAt(0.99);
   check(s3.day && s3.clock === '08:30' && s3.chapter === 3 && s3.notes === 3 && s3.answered === '27', `storia, mattino: 08:30, giorno, 3 notifiche, 27 risposte (${JSON.stringify(s3)})`);
-  check(s3.sky > s0.sky + 300, `storia: il cielo passa dalla notte al giorno (luminosità ${s0.sky} → ${s3.sky})`);
+  check(s3.horizon > s0.horizon + 120 && s3.warm > 30, `storia: all’alba l’orizzonte si scalda (luminosità ${s0.horizon} → ${s3.horizon}, rosso−blu ${s3.warm})`);
+  check(s3.sky < 120, `storia: in alto il cielo resta notte, niente modalità chiara (luminosità ${s3.sky})`);
+  check(await evaluate(`getComputedStyle(document.querySelector('.story-browser')).backgroundColor.match(/\\d+/g).slice(0, 3).reduce((a, b) => a + +b, 0) < 200`), 'storia: la finestra del sito resta scura all’alba');
   check(await evaluate(`(() => { const a = document.querySelector('.story-phone').getBoundingClientRect();
     const b = document.querySelector('.sb-chat').getBoundingClientRect();
     return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top; })()`), 'storia: il telefono non copre la chat');

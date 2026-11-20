@@ -447,7 +447,7 @@ export function landingPage(ctx, { demoWidgetId }) {
   </div>
 </section>
 
-<section class="section" id="domande" data-orb="ring .5 .1 .8 -.95 .3">
+<section class="section" id="domande" data-orb="ring .5 -.3 .9 -.95 .15">
   <div class="wrap faq-wrap">
     <div class="section-head" data-reveal>
       <p class="eyebrow">Domande frequenti</p>

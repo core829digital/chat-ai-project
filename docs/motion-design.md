@@ -24,7 +24,9 @@ superfici di vetro sfocato e un solo colore vivo, il blu elettrico.
 | `--violet` | `#7c5cff` | solo nelle sfumature (logo, aurora) |
 
 La chat demo resta bianca: è il widget vero, come appare sul sito del cliente. Il racconto "Una notte"
-passa dalla notte blu all'alba chiara: i toni del giorno sono definiti solo dentro quella sezione.
+finisce con un'**alba elettrica**: il cielo in alto resta notte, la luce nasce solo dall'orizzonte (fascia
+arancio → rosa → viola), il sole sale con una corona che respira, le stelle si diradano, la luna tramonta.
+Niente si schiarisce: arrivano solo riflessi caldi sui bordi del vetro, sull'orologio e sulle etichette.
 
 ## Sistema di movimento
 
@@ -62,6 +64,10 @@ Regola: sullo schermo non deve mai comparire il bordo netto di una sezione.
   non viene mai tagliata da una linea dritta.
 - Agenzie: niente scheda ritagliata; la rete si apre dal centro con una maschera ellittica sfumata, fondo
   e video sfumano nel nero sopra e sotto. Piè di pagina: il nero arriva per gradi, senza bordo.
+- Video di sezione: il livello del video è grande quanto la sezione e porta la maschera; solo il video
+  dentro si muove in parallasse, quindi i bordi della sezione restano sempre trasparenti.
+- Verifica automatica: uno script fotografa ogni confine tra sezioni (desktop e telefono) e cerca righe in cui
+  la luminosità salta nella stessa direzione su gran parte della larghezza: 0 tagli su 45 confini.
 - Vetro: base scura sotto il riflesso, così la sfera dietro alle schede diventa un bagliore blu e non una nebbia grigia.
 
 ### Telefoni
@@ -73,6 +79,16 @@ Regola: sullo schermo non deve mai comparire il bordo netto di una sezione.
 - Ritmo verticale più compatto, titoli e testi ridimensionati, schede dei settori scorrevoli col dito,
   sfocatura del vetro ridotta (meno lavoro per la scheda grafica), margini di sicurezza per notch e barra home.
 - All'alba la testata passa ai toni chiari finché il cielo chiaro le sta sotto.
+
+### Rifiniture di interazione
+
+- Pulsanti: onda dal punto del clic, pressione con rimbalzo a molla, riflesso anche sul vetro, anello di
+  fuoco che pulsa, stato di invio con rotellina (e nessun doppio invio).
+- Card: anello di luce che segue il cursore lungo il bordo, sollevamento a molla, icone dei dischi che si disegnano.
+- Contenitori: tratto luminoso accanto alle etichette, risposte delle domande che scivolano dentro, cifre dei prezzi
+  che si rimettono a fuoco al cambio mensile/annuale.
+- Moduli: campi che entrano a cascata, etichetta che si accende, scossa breve sul campo con errore,
+  password visibile a richiesta, casella di scelta con spunta che si disegna.
 
 ### Motore di scroll
 

@@ -122,6 +122,7 @@ export function authLayout(ctx, { title, body }) {
   <a href="/" class="brand auth-brand">${logo()}</a>
   <div class="auth-card">${flashBox(ctx)}${body}</div>
 </main>
+<script src="/static/js/site.js" defer></script>
 </body></html>`;
 }
 

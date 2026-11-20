@@ -125,6 +125,67 @@
     });
   }
 
+  // ---------- Pulsanti: onda che parte dal punto del clic ----------
+  if (!reduceMotion) {
+    document.addEventListener('pointerdown', function (e) {
+      var btn = e.target.closest && e.target.closest('.btn, .demo-tab, .billing-toggle button');
+      if (!btn || e.button > 0) return;
+      var r = btn.getBoundingClientRect();
+      var dot = document.createElement('span');
+      dot.className = 'ripple';
+      dot.style.setProperty('--rx', (e.clientX - r.left) + 'px');
+      dot.style.setProperty('--ry', (e.clientY - r.top) + 'px');
+      dot.style.setProperty('--rs', String(Math.ceil(Math.hypot(r.width, r.height) / 6)));
+      if (getComputedStyle(btn).position === 'static') btn.style.position = 'relative';
+      btn.appendChild(dot);
+      setTimeout(function () { dot.remove(); }, 750);
+    });
+  }
+
+  // ---------- Moduli: invio con rotellina e senza doppio invio; password visibile a richiesta ----------
+  document.querySelectorAll('form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (form.dataset.sending) { e.preventDefault(); return; }
+      form.dataset.sending = '1';
+      var btn = e.submitter || form.querySelector('[type="submit"]');
+      if (btn && btn.classList.contains('btn')) { btn.classList.add('is-loading'); btn.setAttribute('aria-busy', 'true'); }
+      // se il browser torna indietro sulla pagina (cache), il modulo deve essere di nuovo utilizzabile
+      window.addEventListener('pageshow', function () { delete form.dataset.sending; if (btn) btn.classList.remove('is-loading'); }, { once: true });
+    });
+  });
+  var EYE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>';
+  document.querySelectorAll('.auth-card input[type="password"]').forEach(function (input) {
+    var wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    var t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'pw-toggle';
+    t.setAttribute('aria-label', 'Mostra la password');
+    t.setAttribute('aria-pressed', 'false');
+    t.innerHTML = EYE;
+    t.addEventListener('click', function () {
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      t.setAttribute('aria-pressed', String(show));
+      t.setAttribute('aria-label', show ? 'Nascondi la password' : 'Mostra la password');
+      input.focus();
+    });
+    wrap.appendChild(t);
+  });
+
+  // ---------- Prezzi: le cifre si rimettono a fuoco quando cambiano ----------
+  document.querySelectorAll('[data-billing]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.price-n').forEach(function (el) {
+        el.classList.remove('is-changing');
+        void el.offsetWidth;
+        el.classList.add('is-changing');
+      });
+    });
+  });
+
   // ---------- Demo animata dell'hero ----------
   var stage = document.querySelector('.hero-stage');
   if (!stage) return;

@@ -456,57 +456,92 @@
       window.addEventListener('scroll', function () { if (Math.abs(progress() - lastP) > 0.2) measure(); }, { passive: true });
     }
 
+    // Alba elettrica: il cielo resta notte in alto; la luce nasce solo dall'orizzonte (niente "modalità chiara").
     var NIGHT_TOP = [2, 6, 16], NIGHT_BOT = [10, 26, 58];
-    var DAWN_TOP = [233, 180, 143], DAWN_BOT = [246, 220, 192];
-    var DAY_TOP = [246, 244, 239], DAY_BOT = [239, 235, 226];
+    var DAWN_TOP = [6, 14, 40], DAWN_BOT = [58, 34, 74];     // blu notte sopra, viola caldo in basso
     var tmp2 = [0, 0];
 
     var drawSky = function (p, t) {
       var ctx = sky.ctx, w = sky.w, h = sky.h;
-      var day = smooth(0.62, 0.92, p);
-      var top = day < 0.5 ? mixColor(NIGHT_TOP, DAWN_TOP, day * 2) : mixColor(DAWN_TOP, DAY_TOP, (day - 0.5) * 2);
-      var bot = day < 0.5 ? mixColor(NIGHT_BOT, DAWN_BOT, day * 2) : mixColor(DAWN_BOT, DAY_BOT, (day - 0.5) * 2);
+      var day = smooth(0.62, 0.95, p);
+      var narrow = w < 760;
+      var top = mixColor(NIGHT_TOP, DAWN_TOP, day);
+      var bot = mixColor(NIGHT_BOT, DAWN_BOT, day);
       var g = ctx.createLinearGradient(0, 0, 0, h);
       g.addColorStop(0, rgb(top));
+      g.addColorStop(0.55, rgb(mixColor(top, bot, 0.45)));
       g.addColorStop(1, rgb(bot));
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
 
-      // stelle che tremolano e si spengono all'alba
-      var starA = 1 - smooth(0.6, 0.8, p);
-      if (starA > 0.01) {
-        for (var i = 0; i < stars.length; i++) {
-          var st = stars[i];
-          var tw = 0.55 + 0.45 * Math.sin(t * 0.001 * st.sp + st.ph);
-          ctx.fillStyle = 'rgba(255,248,230,' + (tw * starA * 0.85).toFixed(3) + ')';
-          ctx.fillRect(st.x * w, st.y * h, st.r, st.r);
-        }
-        // luna
-        var mx = w * 0.84, my = h * 0.17;
+      // il sole: nasce dall'orizzonte e sale piano; su telefono a destra, sopra la chat
+      var sun = smooth(0.66, 1, p);
+      var sx = narrow ? w * 0.8 : w * 0.38;
+      var sy = narrow ? h * lerp(0.46, 0.2, sun) : h * lerp(1.12, 0.8, sun);
+      var R = narrow ? 30 : 46;
+      if (day > 0.01) {
+        // fascia calda lungo l'orizzonte (o dietro al sole, su telefono)
+        var hx = sx, hy = narrow ? sy + h * 0.12 : h;
+        var band = ctx.createRadialGradient(hx, hy, 0, hx, hy, Math.max(w, h) * 0.75);
+        band.addColorStop(0, 'rgba(255,150,92,' + (0.55 * day).toFixed(3) + ')');
+        band.addColorStop(0.3, 'rgba(236,92,120,' + (0.26 * day).toFixed(3) + ')');
+        band.addColorStop(0.62, 'rgba(124,92,255,' + (0.12 * day).toFixed(3) + ')');
+        band.addColorStop(1, 'rgba(47,140,255,0)');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = band;
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // stelle: si diradano ma non spariscono del tutto (in alto resta notte)
+      var starA = 1 - 0.75 * smooth(0.6, 0.95, p);
+      for (var i = 0; i < stars.length; i++) {
+        var st = stars[i];
+        var tw = 0.55 + 0.45 * Math.sin(t * 0.001 * st.sp + st.ph);
+        var a = tw * starA * 0.85 * (1 - day * smooth(0.25, 0.8, st.y)); // vicino all'orizzonte la luce le copre prima
+        if (a < 0.02) continue;
+        ctx.fillStyle = 'rgba(225,236,255,' + a.toFixed(3) + ')';
+        ctx.fillRect(st.x * w, st.y * h, st.r, st.r);
+      }
+      // la luna tramonta: scende e si spegne mentre il sole sale
+      var moonA = 1 - smooth(0.62, 0.86, p);
+      if (moonA > 0.01) {
+        var mx = w * 0.84, my = h * (0.17 + 0.12 * (1 - moonA));
         var halo = ctx.createRadialGradient(mx, my, 0, mx, my, 90);
-        halo.addColorStop(0, 'rgba(255,244,214,' + (0.22 * starA) + ')');
-        halo.addColorStop(1, 'rgba(255,244,214,0)');
+        halo.addColorStop(0, 'rgba(220,234,255,' + (0.2 * moonA) + ')');
+        halo.addColorStop(1, 'rgba(220,234,255,0)');
         ctx.fillStyle = halo;
         ctx.fillRect(mx - 90, my - 90, 180, 180);
-        ctx.fillStyle = 'rgba(255,246,222,' + (0.92 * starA) + ')';
+        ctx.fillStyle = 'rgba(236,242,255,' + (0.92 * moonA) + ')';
         ctx.beginPath(); ctx.arc(mx, my, 22, 0, 6.2832); ctx.fill();
-        ctx.fillStyle = rgb(mixColor(NIGHT_TOP, top, 0.5), starA);
+        ctx.fillStyle = rgb(top, moonA);
         ctx.beginPath(); ctx.arc(mx + 9, my - 6, 19, 0, 6.2832); ctx.fill();
       }
-      // sole che sale lungo un arco
-      var sun = smooth(0.7, 1, p);
       if (sun > 0.01) {
-        // su schermi stretti il sole sale a destra, lontano dall'orologio
-        var narrow = w < 760;
-        var sx = narrow ? w * lerp(0.98, 0.84, sun) : w * lerp(0.08, 0.3, sun);
-        var sy = h * lerp(0.95, narrow ? 0.13 : 0.22, Math.sin(sun * 1.5708));
-        var glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 220);
-        glow.addColorStop(0, 'rgba(255,214,150,' + (0.55 * sun) + ')');
-        glow.addColorStop(1, 'rgba(255,214,150,0)');
-        ctx.fillStyle = glow;
-        ctx.fillRect(sx - 220, sy - 220, 440, 440);
-        ctx.fillStyle = 'rgba(255,200,120,' + (0.9 * sun) + ')';
-        ctx.beginPath(); ctx.arc(sx, sy, 34, 0, 6.2832); ctx.fill();
+        // corona larga, poi disco caldo con il bordo che sfuma; la luce "respira" appena
+        var breath = 1 + 0.04 * Math.sin(t * 0.0012);
+        var corona = ctx.createRadialGradient(sx, sy, R * 0.6, sx, sy, R * 7 * breath);
+        corona.addColorStop(0, 'rgba(255,190,120,' + (0.5 * sun).toFixed(3) + ')');
+        corona.addColorStop(0.35, 'rgba(255,120,110,' + (0.16 * sun).toFixed(3) + ')');
+        corona.addColorStop(1, 'rgba(255,120,110,0)');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = corona;
+        ctx.fillRect(sx - R * 8, sy - R * 8, R * 16, R * 16);
+        ctx.globalCompositeOperation = 'source-over';
+        var disc = ctx.createRadialGradient(sx, sy - R * 0.3, R * 0.1, sx, sy, R);
+        disc.addColorStop(0, 'rgba(255,240,210,' + sun.toFixed(3) + ')');
+        disc.addColorStop(0.7, 'rgba(255,182,110,' + sun.toFixed(3) + ')');
+        disc.addColorStop(1, 'rgba(255,140,90,' + (0.85 * sun).toFixed(3) + ')');
+        ctx.fillStyle = disc;
+        ctx.beginPath(); ctx.arc(sx, sy, R, 0, 6.2832); ctx.fill();
+        if (!narrow) {
+          // sul desktop il sole è ancora per metà sotto l'orizzonte: una foschia lo copre morbidamente
+          var mist = ctx.createLinearGradient(0, h * 0.86, 0, h);
+          mist.addColorStop(0, 'rgba(10,8,30,0)');
+          mist.addColorStop(1, 'rgba(10,8,30,' + (0.75 * day).toFixed(3) + ')');
+          ctx.fillStyle = mist;
+          ctx.fillRect(0, h * 0.86, w, h * 0.14);
+        }
       }
 
       // segnali: di notte le domande vanno al sito, di giorno i contatti vanno al telefono
@@ -533,8 +568,8 @@
         if (s.trail.length > 22) s.trail.splice(0, 2);
 
         var vis = isDay ? 1 : night ? 1 : 0.25;
-        var baseCol = isDay ? GREEN : [214, 236, 255];
-        var col = s.lit > 0.05 ? mixColor(baseCol, isDay ? GREEN : LIVE, s.lit) : baseCol;
+        var baseCol = isDay ? LIVE : [214, 236, 255];
+        var col = s.lit > 0.05 ? mixColor(baseCol, isDay ? [255, 200, 150] : LIVE, s.lit) : baseCol;
         var a = (isDay ? 0.55 : 0.5 + s.lit * 0.4) * vis;
         ctx.strokeStyle = rgb(col, a * 0.5);
         ctx.lineWidth = s.size * 0.8;
@@ -558,9 +593,6 @@
         updateDom(p);
       }
       if (sky && sky.visible) drawSky(p, t);
-      // all'alba il cielo è chiaro: la testata passa ai toni chiari finché il racconto sta sotto di lei
-      var sr2 = story.getBoundingClientRect();
-      root.classList.toggle('over-light', sticky.classList.contains('is-day') && sr2.top < 70 && sr2.bottom > 70);
     });
   }
 
