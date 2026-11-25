@@ -6,3 +6,6 @@ screenshots/
 .neon
 .env.local
 .env.*.local
+
+# File del marchio CORE829: restano solo in locale
+brand/
