@@ -46,7 +46,7 @@ Variabili in `public/css/site.css`:
 Ogni sezione dichiara un fotogramma chiave: `data-orb="forma x y scala inclinazione opacità"`
 (forme: `wave`, `sphere`, `funnel`, `ring`; x e y in frazioni dello schermo). Il motore trova il tratto
 di pagina in cui cade il centro dello schermo, fonde forma e valori tra le due sezioni vicine e li insegue
-con un'inerzia di circa 0,2 s. Ogni punto è definito da (anello, angolo) in tutte le forme, quindi il
+con un’inerzia di circa 0,65 s. Ogni punto è definito da (anello, angolo) in tutte le forme, quindi il
 passaggio da una forma all'altra è una vera trasformazione, non una dissolvenza. Il trattino di ogni punto
 segue la tangente dell'anello; i trattini sono divisi in 4 fasce di profondità (vicini più chiari e spessi)
 e disegnati due volte: un alone largo e tenue e una linea sottile, in somma additiva.

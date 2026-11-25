@@ -187,19 +187,19 @@
       if (k === 0) { // onda: anelli concentrici su un piano che ondeggia
         var r = 0.14 + 1.8 * u;
         out[0] = r * Math.cos(v); out[2] = r * Math.sin(v);
-        out[1] = 0.12 * Math.sin(r * 4.2 - t * 1.5) * (0.35 + u);
+        out[1] = 0.12 * Math.sin(r * 4.2 - t * 0.8) * (0.35 + u);
       } else if (k === 1) { // globo: paralleli che respirano come un'impronta digitale
         var lat = (u - 0.5) * Math.PI * 0.94, cl = Math.cos(lat);
-        var wob = 1 + 0.04 * Math.sin(5 * v + 9 * u + t * 1.3);
+        var wob = 1 + 0.04 * Math.sin(5 * v + 9 * u + t * 0.7);
         out[0] = cl * Math.cos(v) * wob; out[1] = Math.sin(lat) * wob; out[2] = cl * Math.sin(v) * wob;
       } else if (k === 2) { // corno: anelli che si allargano lungo un asse
         var rr = (0.07 + 1.05 * Math.pow(u, 2.2)) * (1 + 0.04 * Math.sin(v * 3 + t * 1.2));
-        var vv = v + t * 0.5;
+        var vv = v + t * 0.22;
         out[0] = -1.3 + 2.6 * u; out[1] = rr * Math.cos(vv); out[2] = rr * Math.sin(vv);
       } else { // aureola: un anello largo e piatto
         var R0 = 0.72 + 0.8 * u;
         out[0] = R0 * Math.cos(v); out[2] = R0 * Math.sin(v);
-        out[1] = 0.06 * Math.sin(6 * v + t * 2 + u * 8);
+        out[1] = 0.06 * Math.sin(6 * v + t * 1 + u * 8);
       }
       return out;
     };
@@ -215,21 +215,22 @@
     var P = [0, 0, 0], Q = [0, 0, 0], S = [0, 0, 0], tmpP = [0, 0, 0];
     var BUCKETS = 4;
     var COLORS = [[200, 242, 255], [110, 210, 255], [55, 150, 255], [40, 95, 225]];
-    var lastOrbT = 0, spin = 0, lastScroll = window.scrollY;
+    var lastOrbT = 0, spin = 0, spinTarget = 0, lastScroll = window.scrollY;
 
     var drawOrb = function (time, instant) {
       var dt = lastOrbT ? Math.min(64, time - lastOrbT) : 16;
       lastOrbT = time;
       sampleTarget();
-      // inerzia: il fotogramma corrente insegue quello desiderato (≈ 0,2 s)
-      var f = instant ? 1 : 1 - Math.exp(-dt / 210);
+      // inerzia: il fotogramma corrente insegue quello desiderato (≈ 0,65 s: il cambio di forma è calmo)
+      var f = instant ? 1 : 1 - Math.exp(-dt / 650);
       for (var k = 0; k < 4; k++) orbCur.w[k] += (orbTarget.w[k] - orbCur.w[k]) * f;
       orbCur.x += (orbTarget.x - orbCur.x) * f; orbCur.y += (orbTarget.y - orbCur.y) * f; orbCur.s += (orbTarget.s - orbCur.s) * f;
       orbCur.tilt += (orbTarget.tilt - orbCur.tilt) * f; orbCur.alpha += (orbTarget.alpha - orbCur.alpha) * f;
-      mouseC.x += (mouseT.x - mouseC.x) * 0.05; mouseC.y += (mouseT.y - mouseC.y) * 0.05;
+      mouseC.x += (mouseT.x - mouseC.x) * 0.025; mouseC.y += (mouseT.y - mouseC.y) * 0.025;
       // lo scroll veloce fa girare la sfera un po' di più
       var sy = window.scrollY;
-      spin += (sy - lastScroll) * 0.0009;
+      spinTarget += clamp(sy - lastScroll, -120, 120) * 0.00028;
+      spin += (spinTarget - spin) * (instant ? 1 : 1 - Math.exp(-dt / 900));
       lastScroll = sy;
 
       var ctx = os.ctx, W = os.w, H = os.h;
@@ -239,7 +240,7 @@
       var R = orbCur.s * Math.min(W, H * 1.3) * 0.42;
       var cx = orbCur.x * W + mouseC.x * 24, cy = orbCur.y * H + mouseC.y * 16;
       var wf = orbCur.w[2];
-      var rotY = (t * 0.16 + spin) * (1 - wf * 0.85) - wf * 0.45 + mouseC.x * 0.25;
+      var rotY = (t * 0.09 + spin) * (1 - wf * 0.85) - wf * 0.45 + mouseC.x * 0.25;
       var tilt = orbCur.tilt + mouseC.y * 0.12;
       var cyR = Math.cos(rotY), syR = Math.sin(rotY), cxR = Math.cos(tilt), sxR = Math.sin(tilt);
       var dist = 3.4;
