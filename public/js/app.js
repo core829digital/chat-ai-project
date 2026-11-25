@@ -40,6 +40,32 @@
   });
 
   // Select che si salvano da sole (stato dei contatti)
+  // Pannelli: anello di luce che segue il cursore; pulsanti: onda dal punto del clic (come sulla landing)
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!calm && window.matchMedia('(pointer: fine)').matches) {
+    document.addEventListener('pointermove', function (e) {
+      var el = e.target.closest && e.target.closest('.panel, .stat');
+      if (!el) return;
+      var r = el.getBoundingClientRect();
+      el.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    }, { passive: true });
+  }
+  if (!calm) {
+    document.addEventListener('pointerdown', function (e) {
+      var btn = e.target.closest && e.target.closest('.btn');
+      if (!btn || e.button > 0) return;
+      var r = btn.getBoundingClientRect();
+      var dot = document.createElement('span');
+      dot.className = 'ripple';
+      dot.style.setProperty('--rx', (e.clientX - r.left) + 'px');
+      dot.style.setProperty('--ry', (e.clientY - r.top) + 'px');
+      dot.style.setProperty('--rs', String(Math.ceil(Math.hypot(r.width, r.height) / 6)));
+      btn.appendChild(dot);
+      setTimeout(function () { dot.remove(); }, 750);
+    });
+  }
+
   document.querySelectorAll('select[data-autosubmit]').forEach(function (sel) {
     var form = sel.form;
     var btn = form && form.querySelector('.js-hide');
